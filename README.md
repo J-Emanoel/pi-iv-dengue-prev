@@ -33,15 +33,6 @@ epidemiologica. Os arquivos reais devem ser inspecionados antes do ETL.
 A stack prevista inclui Python, FastAPI, PostgreSQL, React/Vite e Scikit-learn.
 O ML estimara tendencias; a LLM consultara e explicara resultados do backend.
 
-## Trabalho em outro computador
-
-Apos o commit e o push, clone este repositorio no outro computador.
-As pastas acompanharao o clone por conterem os arquivos .gitkeep.
-Datasets, arquivos .env e dependencias locais nao acompanham o repositorio
-e deverao ser preparados separadamente quando forem necessarios.
-
-O .gitignore exclui dados locais, segredos, caches, dependencias e artefatos
-de modelos. Em data/, apenas arquivos Markdown e .gitkeep sao versionados.
 
 ## Aviso
 
