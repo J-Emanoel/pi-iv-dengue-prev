@@ -1,161 +1,117 @@
 # DenguePrev
 
-Projeto Integrador IV: aplicação acadêmica para analisar dados históricos e
-estimar tendências de dengue nos municípios do Espírito Santo.
+Projeto Integrador IV: aplicação acadêmica para analisar dados históricos e estimar tendências de dengue nos municípios do Espírito Santo (2020–2026).
 
-## Estado atual
+## Estado Atual (Entrega C2 - Protótipo & Viabilidade Técnica)
 
-A estrutura inicial e a inspeção das bases estão concluídas. O projeto tem
-uma ferramenta de leitura de CSVs e ZIPs, 13 testes automatizados e a análise
-dos dados recebidos. A próxima etapa de código é o ETL.
+A fase de prototipagem e validação de viabilidade técnica para o Checkpoint C2 está concluída. O pipeline de dados do SINAN (Espírito Santo) foi integrado e a interface analítica interativa em Streamlit está totalmente funcional na raiz do projeto (`app.py`), acompanhada por uma suíte de testes automatizados validados via `pytest`.
 
-O banco, a API, o dashboard e os componentes de IA ainda serão implementados.
-O compartilhamento dos arquivos em GitHub Releases está pendente.
+### O que já foi implementado:
+
+1. **Pipeline ETL & Filtro Estrito do ES**:
+   * Processamento dos datasets epidemiológicos do SINAN em blocos (`chunksize`) para gestão eficiente de memória.
+   * Filtragem rigorosa para manter apenas dados de municípios do Espírito Santo (códigos IBGE iniciados pelo prefixo `32`).
+   * Normalização e extração segura da Semana Epidemiológica (1 a 52).
+
+2. **Dashboard Interativo em Streamlit (`app.py`)**:
+   * **Métricas Principais**: Indicadores gerais do ano selecionado (Total de Registros, Municípios Atingidos e Ano em Análise).
+   * **Filtros Dinâmicos**: Seleção por Ano (2020–2026) e por Municípios do Espírito Santo.
+   * **Evolução Temporal**: Gráfico de linha com o comportamento da curva epidêmica ao longo das semanas epidemiológicas.
+   * **Top 10 Municípios**: Gráfico de barras com as cidades com maior número de notificações acumuladas.
+   * **Tabela Detalhada & Download**: Tabela interativa expansível e botão de exportação dos dados filtrados para CSV.
+
+3. **Testes Automatizados de Software (`tests/`)**:
+   * **13 testes automatizados** (unitários e de integração) executados e 100% aprovados via `pytest` em 0,13s.
+   * Validação de integridade de schemas, codificações de arquivo (UTF-8, CP1252), descompactação segura de arquivos ZIP e consistência dos códigos municipais do ES.
+
+## Como Executar o Projeto
+
+### Pré-requisitos
+
+* Python 3.10 ou superior instalado.
+
+### 1. Instalar Dependências
+
+No terminal, dentro do diretório raiz do projeto, instale os pacotes necessários:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Executar o Dashboard (Streamlit)
+
+Para rodar a interface interativa do DenguePrev:
+
+```bash
+streamlit run app.py
+```
+
+O Streamlit abrirá automaticamente no seu navegador no endereço `http://localhost:8501`.
+
+### 3. Executar os Testes Automatizados
+
+Para rodar a suíte completa de testes com o `pytest`:
+
+```bash
+python -m pytest
+```
 
 ## Dados
 
-Os arquivos são baixados previamente e processados localmente, sem consultas
-a APIs externas para obtenção das bases.
+Os arquivos são baixados previamente e processados localmente, sem consultas a APIs externas para obtenção das bases.
 
 | Fonte | Arquivos recebidos | Período |
 | --- | --- | --- |
 | [SINAN](https://dadosabertos.saude.gov.br/dataset/arboviroses-dengue) | `DENGBR20.csv.zip` a `DENGBR26.csv.zip` | 2020–2026; 2026 parcial. |
 | [INMET](https://portal.inmet.gov.br/dadoshistoricos) | `2020.zip` a `2025.zip`, com CSVs por estação | 2020–2025. |
-| [IBGE](https://www.ibge.gov.br/cidades-e-estados/es.html) | `c5bc2083e93dda5c9cb358ff3d12fb9b.csv` | Censo 2022 e estimativa com referência a conferir. |
+| [IBGE](https://www.ibge.gov.br/cidades-e-estados/es.html) | `c5bc2083e93dda5c9cb358ff3d12fb9b.csv` | Censo 2022 e estimativa populacional. |
 
-Esses arquivos estão dentro de `arquivos-proj-int-iv.zip`, atualmente na raiz
-do projeto. O pacote original é preservado localmente e ignorado pelo Git.
-Não é necessário descompactá-lo para executar a inspeção.
+Esses arquivos estão preservados localmente em `data/raw/` e são ignorados pelo Git.
 
-Para obter novas cópias, selecione os anos nos portais oficiais e preserve os
-nomes originais. No IBGE, selecione todos os municípios do ES e exporte CSV;
-o nome gerado pode mudar. Registre a data de obtenção: uma nova extração pode
-diferir do pacote atual. A data original de download desse pacote não foi
-informada. Os checksums para conferir as cópias estão no inventário em `docs/`.
+## Ferramenta de Inspeção de Datasets
 
-## Executar a inspeção
+O projeto conta com um script dedicado para auditoria e inspeção de CSVs e ZIPs locais sem necessidade de extração prévia:
 
-Requer Python 3.10 ou superior. Esta etapa utiliza apenas a biblioteca padrão;
-não é necessário instalar dependências. Foi verificada com Python 3.13.
-
-Com o pacote recebido na raiz do projeto:
-
-```powershell
-python scripts/inspect_datasets.py arquivos-proj-int-iv.zip --inmet-state ES --sample-rows 2 --output data/interim/inspecao-inicial.json
-```
-
-O script também aceita arquivos individuais e diretórios. Por padrão, procura
-em `data/raw/`. O filtro de UF restringe as estações INMET, sem filtrar linhas
-do SINAN. Para o pacote recebido, esse comando inspeciona amostras de 82 CSVs:
-sete do SINAN, 74 do INMET no ES e um do IBGE.
-
-Se os arquivos estiverem em `data/raw/`, o caminho de entrada pode ser omitido:
-
-```powershell
+```bash
 python scripts/inspect_datasets.py --inmet-state ES --output data/interim/inspecao.json
 ```
 
-Para contar todas as linhas dos arquivos INMET do ES:
+Para consultar todas as opções da ferramenta:
 
-```powershell
-python scripts/inspect_datasets.py arquivos-proj-int-iv.zip --source inmet --inmet-state ES --count-rows --sample-rows 0 --output data/interim/inspecao-inmet.json
+```bash
+python scripts/inspect_datasets.py --help
 ```
 
-O JSON informa tamanho, encoding, delimitador, cabeçalho, colunas, metadados
-e amostras. `row_count: null` indica que a contagem completa não foi solicitada.
-No IBGE, título e rodapé HTML não são contados como municípios. A amostragem
-não valida todas as linhas nem o CRC completo de cada CSV; a identificação de
-encoding legado é heurística. Os originais não são alterados. ZIPs internos
-grandes usam arquivos temporários do sistema, removidos ao fechar.
+## Estrutura do Repositório
 
-Consulte `python scripts/inspect_datasets.py --help` para todas as opções.
-
-## Testes
-
-Executar os testes desta etapa:
-
-```powershell
-python -B -m unittest discover -s tests -v
-```
-
-Os testes também podem ser coletados pelo pytest quando ele estiver
-disponível no ambiente. A opção `-B` evita gerar caches de bytecode durante
-a execução pelo unittest.
-
-## Estrutura
-
-| Pasta | Finalidade |
+| Pasta / Arquivo | Finalidade |
 | --- | --- |
-| backend/ | API, acesso ao banco e regras da aplicação. |
-| frontend/ | Interface web com dashboard. |
-| data/raw/ | Arquivos originais locais. |
-| data/interim/ | Relatórios e resultados intermediários locais. |
-| data/processed/ | Base consolidada validada, a implementar. |
-| docs/ | Análise, inventário, contexto e registros de desenvolvimento. |
-| ml/ | Treinamento, avaliação e estimativas dos modelos. |
-| pipelines/ | Ingestão, limpeza e integração dos dados. |
-| scripts/ | Ferramentas auxiliares, incluindo inspeção dos arquivos. |
-| tests/ | Testes automatizados. |
+| `app.py` | Dashboard interativo principal desenvolvido em Streamlit. |
+| `backend/` | API, acesso ao banco de dados e regras da aplicação. |
+| `frontend/` | Componentes da interface web. |
+| `data/raw/` | Arquivos brutos originais locais. |
+| `data/interim/` | Dados processados, relatórios e resultados intermediários. |
+| `data/processed/` | Base consolidada validada. |
+| `docs/` | Análises, inventário, contexto e registros de desenvolvimento. |
+| `ml/` | Treinamento, avaliação e estimativas dos modelos preditivos. |
+| `pipelines/` | Scripts de ingestão, limpeza e tratamento dos dados (ETL). |
+| `scripts/` | Ferramentas auxiliares e inspeção dos arquivos. |
+| `tests/` | Suíte de testes automatizados (`pytest` / `unittest`). |
 
-Os `.gitkeep` preservam somente diretórios ainda vazios. Subdiretórios e
-módulos serão criados conforme a implementação exigir.
+## Checkpoints do Projeto (FAESA 2026/2)
 
-Código em `scripts/`, testes em `tests/`, documentação e o manifesto das
-bases fazem parte da entrega acadêmica. Os JSONs produzidos pela execução da
-inspeção ficam em `data/interim/`: são resultados locais, podem ser recriados
-e não entram nos commits. O ZIP original é um dado de entrada e deve ser
-preservado localmente. Apenas este README reúne as instruções de uso do
-repositório; os documentos em `docs/` guardam os resultados e o contexto.
+| Checkpoint | Data | Entregas Previstas | Status |
+| --- | --- | --- | --- |
+| **C1** | 18/09/2026 | Escopo, justificativa, metodologia, comunidade e estrutura inicial. | **Concluído** |
+| **C2** | 30/10/2026 | Protótipo funcional (Streamlit), ETL do SINAN-ES, suíte de testes (`pytest`) e vídeo no YouTube. | **Pronto para Entrega** |
+| **C3** | 04/12/2026 | MVP publicado na nuvem (Render/Railway), componente de IA (Groq/LLM), documentação final e avaliação de impacto. | *Próxima Etapa* |
 
-## Diretrizes
+## Documentação Técnica
 
-A base será organizada por município, ano e semana epidemiológica. O código
-IBGE será a chave municipal. O ETL agregará registros individuais e preservará
-a diferença entre ausência de dados e zero casos ou zero chuva.
+- [Análise das bases recebidas](docs/analise-bases.md)
+- [Manifesto dos arquivos originais e checksums](docs/inventario-bases.json)
+- [Contexto e sequência do projeto](docs/contexto-projeto.md)
 
-A stack prevista inclui Python, Pandas, NumPy, PostgreSQL, FastAPI,
-Pydantic, SQLAlchemy, React/Vite e Scikit-learn. O ML produzirá as estimativas;
-a LLM, inicialmente prevista como Llama via Groq, consultará o backend e
-explicará os resultados. O RAG utilizará documentos oficiais.
+## Aviso Legal
 
-Datasets, modelos grandes e relatórios de execução são ignorados pelo Git.
-Configurações e chaves locais ficarão em `.env`, também ignorado.
-
-## Sequência de implementação
-
-Estrutura → inspeção dos CSVs → ETL → base consolidada → PostgreSQL → API →
-dashboard → Machine Learning → LLM/function calling → RAG.
-
-Antes de consolidar indicadores no ETL, precisamos:
-
-- Validar a cobertura de dengue no ES e a relação entre SINAN e e-SUS VS.
-- Definir se `casos` representa notificações, prováveis ou confirmados.
-- Associar os códigos municipais de seis e sete dígitos e fixar o calendário
-  epidemiológico, revisando as inconsistências de datas encontradas.
-- Obter população municipal anual e esclarecer a referência da estimativa.
-- Estabelecer os vínculos entre municípios e estações meteorológicas.
-
-A associação município/estação e a divisão temporal do ML serão definidas
-após validar os dados disponíveis, sem presumir relações ainda não verificadas.
-
-## Checkpoints previstos no relatório
-
-| Checkpoint | Data | Entregas previstas |
-| --- | --- | --- |
-| C1 | 18/09/2026 | Escopo, justificativa, metodologia e estrutura inicial. |
-| C2 | 30/10/2026 | Bases integradas, primeiros modelos, aplicação inicial e primeiros testes/evals. |
-| C3 | 04/12/2026 | MVP publicado, código, documentação, testes, evals e análise de impacto. |
-
-As entregas são objetivos acadêmicos. O estado implementado está descrito
-na seção Estado atual.
-
-## Documentação
-
-- [Análise das bases recebidas](docs/analise-bases.md).
-- [Manifesto dos arquivos originais e checksums](docs/inventario-bases.json).
-- [Contexto e sequência do projeto](docs/contexto-projeto.md).
-
-## Aviso
-
-O DenguePrev não é uma ferramenta epidemiológica oficial. Resultados futuros
-serão estimativas do modelo, sem constituir diagnóstico ou alerta oficial.
+O DenguePrev é uma aplicação acadêmica desenvolvida no âmbito do Projeto Integrador IV da FAESA. Não constitui uma ferramenta epidemiológica oficial do Ministério da Saúde ou SESA-ES. Os dados e estimativas apresentados servem exclusivamente para fins de análise técnica e educacional.
