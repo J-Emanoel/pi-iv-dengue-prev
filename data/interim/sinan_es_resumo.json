@@ -1,0 +1,74 @@
+{
+  "projeto": "DenguePrev",
+  "etapa": "ETL inicial SINAN",
+  "gerado_em_utc": "2026-10-25T22:43:00.017704+00:00",
+  "arquivo_entrada": "arquivos-proj-int-iv.zip",
+  "arquivo_saida_csv": "data\\interim\\sinan_es_municipio_semana.csv",
+  "anos_solicitados": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
+  "arquivos": [
+    {
+      "ano_arquivo": 2020,
+      "arquivo": "DENGBR20.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 1495117,
+      "linhas_es": 7824,
+      "csv_interno": "DENGBR20.csv"
+    },
+    {
+      "ano_arquivo": 2021,
+      "arquivo": "DENGBR21.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 1024635,
+      "linhas_es": 15468,
+      "csv_interno": "DENGBR21.csv"
+    },
+    {
+      "ano_arquivo": 2022,
+      "arquivo": "DENGBR22.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 1405095,
+      "linhas_es": 11218,
+      "csv_interno": "DENGBR22.csv"
+    },
+    {
+      "ano_arquivo": 2023,
+      "arquivo": "DENGBR23.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 1645956,
+      "linhas_es": 137303,
+      "csv_interno": "DENGBR23.csv"
+    },
+    {
+      "ano_arquivo": 2024,
+      "arquivo": "DENGBR24.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 6564924,
+      "linhas_es": 137871,
+      "csv_interno": "DENGBR24.csv"
+    },
+    {
+      "ano_arquivo": 2025,
+      "arquivo": "DENGBR25.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 1643215,
+      "linhas_es": 34326,
+      "csv_interno": "DENGBR25.csv"
+    },
+    {
+      "ano_arquivo": 2026,
+      "arquivo": "DENGBR26.csv.zip",
+      "status": "processado",
+      "linhas_bruto": 453398,
+      "linhas_es": 19711,
+      "csv_interno": "DENGBR26.csv"
+    }
+  ]
+}
