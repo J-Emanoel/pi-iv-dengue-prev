@@ -1,0 +1,159 @@
+{
+  "manifest_version": 1,
+  "audit_date": "2026-10-24",
+  "input": {
+    "filename": "arquivos-proj-int-iv.zip",
+    "bytes": 956346013,
+    "sha256": "fdfeabaa760343234ee0ebcfe1bdaebe6c69766a851858907967c0e900b5d26c"
+  },
+  "download_date": null,
+  "download_date_note": "A data original de download não foi informada; datas dos arquivos não foram usadas como substituto.",
+  "packages": [
+    {
+      "filename": "DENGBR26.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 14747813,
+      "sha256": "6c709952bfdf7b746e88ca37d2fd893ac51148bbb366f95c095cc72a6119b97d",
+      "csv_count": 1,
+      "uncompressed_bytes": 126927659,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "DENGBR23.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 39499188,
+      "sha256": "9a376a7be58b3c0e84bfac82474515f407fd7f135eae19660515428e6ccc0b9c",
+      "csv_count": 1,
+      "uncompressed_bytes": 463682540,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "DENGBR22.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 41866445,
+      "sha256": "31966b27b5aed1e5ce724dd7b9cacbef536f9fd0e49b3a2b2cfa7305bbdb33b5",
+      "csv_count": 1,
+      "uncompressed_bytes": 392961379,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "DENGBR21.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 29616632,
+      "sha256": "d7c8a5b3358fd59125b9d51fa838b164aa937f2dce7600ad78dbd76629f3369c",
+      "csv_count": 1,
+      "uncompressed_bytes": 284495017,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "DENGBR20.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 44632325,
+      "sha256": "2ed5ba9fd7fe6617fb18eaf17a72f95bc67403dfb6bf50ca46c8ceb2ca356851",
+      "csv_count": 1,
+      "uncompressed_bytes": 399584952,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "2020.zip",
+      "source": "INMET (identificado nos cabeçalhos)",
+      "bytes": 103653055,
+      "sha256": "e6cf2016dd3b78d7180dac8cbd482e5f549b227dc87a9dff642ecb7bb9e5ba0b",
+      "csv_count": 589,
+      "uncompressed_bytes": 412570704,
+      "es_weather_csv_count": 13,
+      "original_download_url": null
+    },
+    {
+      "filename": "2024.zip",
+      "source": "INMET (identificado nos cabeçalhos)",
+      "bytes": 102772199,
+      "sha256": "0a7f89de57427f79b6f82943b2f7f2e932202d9253e34bf25629ed088d108ae7",
+      "csv_count": 565,
+      "uncompressed_bytes": 405471533,
+      "es_weather_csv_count": 12,
+      "original_download_url": null
+    },
+    {
+      "filename": "2022.zip",
+      "source": "INMET (identificado nos cabeçalhos)",
+      "bytes": 90362801,
+      "sha256": "292d997e0589486404827055f887327732f11d0bed9b5507952e6cad9bea286b",
+      "csv_count": 567,
+      "uncompressed_bytes": 371900715,
+      "es_weather_csv_count": 13,
+      "original_download_url": null
+    },
+    {
+      "filename": "2023.zip",
+      "source": "INMET (identificado nos cabeçalhos)",
+      "bytes": 107069252,
+      "sha256": "b17391392cc1219151977cc2c46a7ab24368d821fd780311da9fff62a627bfd8",
+      "csv_count": 567,
+      "uncompressed_bytes": 415560362,
+      "es_weather_csv_count": 12,
+      "original_download_url": null
+    },
+    {
+      "filename": "2025.zip",
+      "source": "INMET (identificado nos cabeçalhos)",
+      "bytes": 90898634,
+      "sha256": "14988d0b736ba969b48881589f602f3a6d7e97b95bd1de934456851fdac2cb89",
+      "csv_count": 594,
+      "uncompressed_bytes": 376671813,
+      "es_weather_csv_count": 11,
+      "original_download_url": null
+    },
+    {
+      "filename": "2021.zip",
+      "source": "INMET (identificado nos cabeçalhos)",
+      "bytes": 80571564,
+      "sha256": "360e53e612cf30473371d76b520585f8cd34e61d0d2185e3afe1206ce949433b",
+      "csv_count": 588,
+      "uncompressed_bytes": 353836498,
+      "es_weather_csv_count": 13,
+      "original_download_url": null
+    },
+    {
+      "filename": "c5bc2083e93dda5c9cb358ff3d12fb9b.csv",
+      "source": "IBGE Cidades e Estados (identificado no conteúdo)",
+      "bytes": 14102,
+      "sha256": "4e37fe551eba1c74acee9abbd560052ebce75e7548b5100e35c886eb7815ccb2",
+      "csv_count": 1,
+      "uncompressed_bytes": 14102,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "DENGBR24.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 187264443,
+      "sha256": "1b6b7bf7f6b1fdab4ed2314edc2f57919c33b8103988383f22b7d4776c4a931a",
+      "csv_count": 1,
+      "uncompressed_bytes": 1840398627,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    },
+    {
+      "filename": "DENGBR25.csv.zip",
+      "source": "SINAN (identificado por nome e esquema)",
+      "bytes": 41648790,
+      "sha256": "9b8eed5830cb5840420462a37c8cd5aa215aedde3645f17c2e7c117cad354f2d",
+      "csv_count": 1,
+      "uncompressed_bytes": 456808478,
+      "es_weather_csv_count": 0,
+      "original_download_url": null
+    }
+  ],
+  "analysis_report": "analise-bases.md",
+  "notes": [
+    "Este manifesto identifica as bases recebidas e registra os checksums para conferir copias.",
+    "Resultados, limitacoes e decisoes da analise estao em analise-bases.md.",
+    "Relatorios de execucao e perfis intermediarios nao fazem parte deste manifesto."
+  ]
+}

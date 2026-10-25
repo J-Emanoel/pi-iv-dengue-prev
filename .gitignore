@@ -4,6 +4,7 @@
 !.env.example
 
 # Datasets: keep documentation and folder markers
+/arquivos-proj-int-iv.zip
 data/**
 !data/**/
 !data/**/*.md
