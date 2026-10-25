@@ -1,0 +1,51 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Datasets: keep documentation and folder markers
+data/**
+!data/**/
+!data/**/*.md
+!data/**/.gitkeep
+
+# Model artifacts
+ml/**/*.pkl
+ml/**/*.pickle
+ml/**/*.joblib
+ml/**/*.onnx
+ml/**/*.pt
+ml/**/*.pth
+ml/**/*.h5
+ml/**/*.keras
+ml/models/**
+!ml/models/**/
+!ml/models/**/*.md
+!ml/models/**/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Dependencies, builds and local files
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.tools/
+.npm-cache/
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
