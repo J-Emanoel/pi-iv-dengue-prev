@@ -3,12 +3,35 @@
 Projeto Integrador IV: aplicação acadêmica para analisar dados históricos e
 estimar tendências de dengue nos municípios do Espírito Santo.
 
-## Status
+## Estado atual
 
-O repositório contém a estrutura inicial, a análise dos arquivos reais e uma
-ferramenta executável de inspeção de CSVs e ZIPs. As limitações das bases estão
-documentadas. O ETL definitivo, a base consolidada, o banco, a API, o frontend
-e os componentes de IA serão implementados nas próximas etapas.
+A estrutura inicial e a inspeção das bases estão concluídas. O projeto tem
+uma ferramenta de leitura de CSVs e ZIPs, 13 testes automatizados e a análise
+dos dados recebidos. A próxima etapa de código é o ETL.
+
+O banco, a API, o dashboard e os componentes de IA ainda serão implementados.
+O compartilhamento dos arquivos em GitHub Releases está pendente.
+
+## Dados
+
+Os arquivos são baixados previamente e processados localmente, sem consultas
+a APIs externas para obtenção das bases.
+
+| Fonte | Arquivos recebidos | Período |
+| --- | --- | --- |
+| [SINAN](https://dadosabertos.saude.gov.br/dataset/arboviroses-dengue) | `DENGBR20.csv.zip` a `DENGBR26.csv.zip` | 2020–2026; 2026 parcial. |
+| [INMET](https://portal.inmet.gov.br/dadoshistoricos) | `2020.zip` a `2025.zip`, com CSVs por estação | 2020–2025. |
+| [IBGE](https://www.ibge.gov.br/cidades-e-estados/es.html) | `c5bc2083e93dda5c9cb358ff3d12fb9b.csv` | Censo 2022 e estimativa com referência a conferir. |
+
+Esses arquivos estão dentro de `arquivos-proj-int-iv.zip`, atualmente na raiz
+do projeto. O pacote original é preservado localmente e ignorado pelo Git.
+Não é necessário descompactá-lo para executar a inspeção.
+
+Para obter novas cópias, selecione os anos nos portais oficiais e preserve os
+nomes originais. No IBGE, selecione todos os municípios do ES e exporte CSV;
+o nome gerado pode mudar. Registre a data de obtenção: uma nova extração pode
+diferir do pacote atual. A data original de download desse pacote não foi
+informada. Os checksums para conferir as cópias estão no inventário em `docs/`.
 
 ## Executar a inspeção
 
@@ -23,8 +46,31 @@ python scripts/inspect_datasets.py arquivos-proj-int-iv.zip --inmet-state ES --s
 
 O script também aceita arquivos individuais e diretórios. Por padrão, procura
 em `data/raw/`. O filtro de UF restringe as estações INMET, sem filtrar linhas
-do SINAN. Consulte [data/README.md](data/README.md) para fontes, nomes dos
-arquivos, contagem completa e limitações.
+do SINAN. Para o pacote recebido, esse comando inspeciona amostras de 82 CSVs:
+sete do SINAN, 74 do INMET no ES e um do IBGE.
+
+Se os arquivos estiverem em `data/raw/`, o caminho de entrada pode ser omitido:
+
+```powershell
+python scripts/inspect_datasets.py --inmet-state ES --output data/interim/inspecao.json
+```
+
+Para contar todas as linhas dos arquivos INMET do ES:
+
+```powershell
+python scripts/inspect_datasets.py arquivos-proj-int-iv.zip --source inmet --inmet-state ES --count-rows --sample-rows 0 --output data/interim/inspecao-inmet.json
+```
+
+O JSON informa tamanho, encoding, delimitador, cabeçalho, colunas, metadados
+e amostras. `row_count: null` indica que a contagem completa não foi solicitada.
+No IBGE, título e rodapé HTML não são contados como municípios. A amostragem
+não valida todas as linhas nem o CRC completo de cada CSV; a identificação de
+encoding legado é heurística. Os originais não são alterados. ZIPs internos
+grandes usam arquivos temporários do sistema, removidos ao fechar.
+
+Consulte `python scripts/inspect_datasets.py --help` para todas as opções.
+
+## Testes
 
 Executar os testes desta etapa:
 
@@ -45,7 +91,7 @@ a execução pelo unittest.
 | data/raw/ | Arquivos originais locais. |
 | data/interim/ | Relatórios e resultados intermediários locais. |
 | data/processed/ | Base consolidada validada, a implementar. |
-| docs/ | Documentação técnica, acadêmica e registro do uso de IA. |
+| docs/ | Análise, inventário, contexto e registros de desenvolvimento. |
 | ml/ | Treinamento, avaliação e estimativas dos modelos. |
 | pipelines/ | Ingestão, limpeza e integração dos dados. |
 | scripts/ | Ferramentas auxiliares, incluindo inspeção dos arquivos. |
@@ -58,34 +104,39 @@ Código em `scripts/`, testes em `tests/`, documentação e o manifesto das
 bases fazem parte da entrega acadêmica. Os JSONs produzidos pela execução da
 inspeção ficam em `data/interim/`: são resultados locais, podem ser recriados
 e não entram nos commits. O ZIP original é um dado de entrada e deve ser
-preservado localmente.
+preservado localmente. Apenas este README reúne as instruções de uso do
+repositório; os documentos em `docs/` guardam os resultados e o contexto.
 
 ## Diretrizes
 
-As fontes são SINAN, INMET e IBGE, obtidas previamente e processadas
-localmente. A base será organizada por município, ano e semana epidemiológica.
-O ETL agregará os registros individuais e preservará a diferença entre
-ausência de dados e zero.
+A base será organizada por município, ano e semana epidemiológica. O código
+IBGE será a chave municipal. O ETL agregará registros individuais e preservará
+a diferença entre ausência de dados e zero casos ou zero chuva.
 
 A stack prevista inclui Python, Pandas, NumPy, PostgreSQL, FastAPI,
 Pydantic, SQLAlchemy, React/Vite e Scikit-learn. O ML produzirá as estimativas;
 a LLM, inicialmente prevista como Llama via Groq, consultará o backend e
 explicará os resultados. O RAG utilizará documentos oficiais.
 
-Datasets e modelos grandes são ignorados pelo Git. O pacote
-`arquivos-proj-int-iv.zip` permanece local. O compartilhamento por GitHub
-Releases foi proposto e ainda não foi publicado. Configurações e chaves
-locais ficarão em `.env`, já ignorado.
+Datasets, modelos grandes e relatórios de execução são ignorados pelo Git.
+Configurações e chaves locais ficarão em `.env`, também ignorado.
 
 ## Sequência de implementação
 
 Estrutura → inspeção dos CSVs → ETL → base consolidada → PostgreSQL → API →
 dashboard → Machine Learning → LLM/function calling → RAG.
 
-O próximo incremento é o ETL. Antes de consolidar indicadores, precisamos
-validar a cobertura no ES, definir o numerador de casos, obter população
-anual e estabelecer os vínculos entre municípios e estações. Consulte o
-[contexto do projeto](docs/contexto-projeto.md).
+Antes de consolidar indicadores no ETL, precisamos:
+
+- Validar a cobertura de dengue no ES e a relação entre SINAN e e-SUS VS.
+- Definir se `casos` representa notificações, prováveis ou confirmados.
+- Associar os códigos municipais de seis e sete dígitos e fixar o calendário
+  epidemiológico, revisando as inconsistências de datas encontradas.
+- Obter população municipal anual e esclarecer a referência da estimativa.
+- Estabelecer os vínculos entre municípios e estações meteorológicas.
+
+A associação município/estação e a divisão temporal do ML serão definidas
+após validar os dados disponíveis, sem presumir relações ainda não verificadas.
 
 ## Checkpoints previstos no relatório
 
@@ -96,15 +147,13 @@ anual e estabelecer os vínculos entre municípios e estações. Consulte o
 | C3 | 04/12/2026 | MVP publicado, código, documentação, testes, evals e análise de impacto. |
 
 As entregas são objetivos acadêmicos. O estado implementado está descrito
-na seção de status.
+na seção Estado atual.
 
 ## Documentação
 
 - [Análise das bases recebidas](docs/analise-bases.md).
 - [Manifesto dos arquivos originais e checksums](docs/inventario-bases.json).
 - [Contexto e sequência do projeto](docs/contexto-projeto.md).
-- [Registro de uso de IA](docs/prompts/README.md).
-
 
 ## Aviso
 

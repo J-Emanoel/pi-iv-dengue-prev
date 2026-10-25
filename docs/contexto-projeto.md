@@ -65,7 +65,7 @@ nem alertas oficiais de saúde.
 ## Primeiro incremento de código
 
 A inspeção pontual já realizada passa a ter uma ferramenta reproduzível em
-`scripts/inspect_datasets.py`, com documentação em `data/README.md` e testes.
+`scripts/inspect_datasets.py`, com instruções no README principal e testes.
 As pastas locais são `data/raw/`, `data/interim/` e `data/processed/`.
 
 O scaffold de API, `/health`, frontend e PostgreSQL descritos no material de
@@ -75,4 +75,3 @@ Configuração por ambiente e testes acompanharão cada componente.
 Código, documentação e inventários são versionados. Datasets grandes,
 artefatos de modelos, senhas e chaves ficam fora dos commits. O compartilhamento
 por Releases ainda aguarda publicação; Git LFS não será usado inicialmente.
-Prompts relevantes ficam em `docs/prompts/`.
