@@ -43,7 +43,7 @@ pip install -r requirements.txt
 Para rodar a interface interativa do DenguePrev:
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 O Streamlit abrirá automaticamente no seu navegador no endereço `http://localhost:8501`.
