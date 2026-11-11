@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from pathlib import Path
+import requests
 
 # Configuração da página
 st.set_page_config(
@@ -12,25 +12,38 @@ st.set_page_config(
 st.title("🦟 DenguePrev: Monitorização de Casos de Dengue no ES")
 st.markdown("Plataforma analítica baseada nos dados do SINAN para o Estado do Espírito Santo (2020–2026).")
 
-# Função para carregar e filtrar rigorosamente os dados do ES
+# Função para carregar os dados DIRETAMENTE DA TUA API
 @st.cache_data
 def carregar_dados():
-    caminho = Path("data/interim/sinan_es_municipio_semana.csv")
-    if not caminho.exists():
-        caminho = Path("../data/interim/sinan_es_municipio_semana.csv")
+    # 1. Faz o pedido à tua API local (que está ligada ao Supabase)
+    resposta = requests.get("http://127.0.0.1:8000/casos")
     
-    if not caminho.exists():
-        raise FileNotFoundError("O ficheiro consolidado não foi encontrado.")
+    if resposta.status_code != 200:
+        raise Exception(f"A API respondeu com o código de erro {resposta.status_code}. Certifica-te de que o Uvicorn está a correr.")
         
-    df = pd.read_csv(caminho)
+    # 2. Converte a resposta JSON num DataFrame do Pandas
+    dados_json = resposta.json()
+    if not dados_json:
+        raise Exception("A tabela de casos no banco de dados está vazia.")
+        
+    df = pd.DataFrame(dados_json)
+    
+    # 3. Renomeia as colunas da base de dados para os nomes que o teu Dashboard usa
+    df = df.rename(columns={
+        'codigo_ibge': 'codigo_municipio',
+        'ano': 'ano_arquivo',
+        'semana_epidemiologica': 'semana_num',
+        'quantidade_casos': 'registos'
+    })
     
     # Garantir que filtramos estritamente os municípios do Espírito Santo (iniciados por 32)
-    df['codigo_municipio'] = pd.to_numeric(df['codigo_municipio'], errors='coerce')
-    df = df[df['codigo_municipio'].astype(str).str.startswith('32')].copy()
+    df['codigo_municipio'] = df['codigo_municipio'].astype(str)
+    df = df[df['codigo_municipio'].str.startswith('32')].copy()
     
-    # Tratamento seguro para extrair o número correto da semana (1 a 52)
-    df['semana_epidemiologica'] = pd.to_numeric(df['semana_epidemiologica'], errors='coerce').fillna(0).astype(int)
-    df['semana_num'] = df['semana_epidemiologica'].astype(str).str.zfill(6).str.slice(-2).astype(int)
+    # Tratamento seguro para numéricos
+    df['semana_num'] = pd.to_numeric(df['semana_num'], errors='coerce').fillna(0).astype(int)
+    df['ano_arquivo'] = pd.to_numeric(df['ano_arquivo'], errors='coerce').fillna(0).astype(int)
+    df['registos'] = pd.to_numeric(df['registos'], errors='coerce').fillna(0).astype(int)
     
     return df
 
@@ -38,8 +51,8 @@ def carregar_dados():
 try:
     df = carregar_dados()
 except Exception as e:
-    st.error(f"Erro ao carregar os dados: {e}")
-    st.info("Certifica-te de que o ficheiro consolidado existe na pasta 'data/interim/'.")
+    st.error(f"❌ Erro detalhado ao carregar os dados: {e}")
+    st.info("💡 Dica: Verifica se o terminal do FastAPI (Uvicorn) está a correr na porta 8000 e se a rota /casos está ativa.")
     st.stop()
 
 # --- BARRA LATERAL (FILTROS) ---
