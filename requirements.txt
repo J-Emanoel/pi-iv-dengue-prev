@@ -1,4 +1,8 @@
-streamlit
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
 pandas
-pytest
-numpy
+streamlit
+requests
+python-dotenv
