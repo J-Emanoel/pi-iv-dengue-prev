@@ -17,7 +17,9 @@ O acesso ao PostgreSQL compartilhado no Supabase foi configurado nesta máquina.
 duplicada. O índice único foi instalado e as consultas da API foram validadas
 contra esse banco. Todos os agregados retornados coincidem com a fonte corrigida.
 Os 78 municípios já possuem nomes do cadastro IBGE, exibidos pela API e pelo
-Streamlit. A população anual e o clima ainda precisam ser integrados.
+Streamlit. A população foi integrada em `populacoes_municipais`, com 546
+referências para os 78 municípios de 2020 a 2026. O clima e os indicadores
+ainda precisam ser integrados e validados.
 
 A conexão real fica somente no `.env` local, ignorado pelo Git. O
 `.env.example` contém valores fictícios; cada participante configura seu acesso
@@ -41,6 +43,7 @@ Ausência de registro não foi convertida em zero.
 | --- | --- |
 | `pipelines/etl_sinan.py` | Lê o ZIP em blocos e gera os agregados semanais. |
 | `pipelines/etl_ibge.py` | Extrai os nomes e valida a correspondência dos códigos municipais. |
+| `pipelines/etl_populacao.py` | Consolida referências populacionais por município/ano e registra a origem. |
 | `backend/database.py` | Configura a conexão PostgreSQL a partir do ambiente. |
 | `backend/models.py` | Define tabelas, colunas, relacionamentos e restrições SQL. |
 | `backend/povoar_banco.py` | Confere a fonte e sincroniza os agregados com o banco. |
@@ -149,7 +152,30 @@ Para gerar o cadastro nominal do IBGE a partir do mesmo ZIP:
 O resultado fica em `data/processed/municipios_ibge.csv`, acompanhado de
 `municipios_ibge_resumo.json`, com hashes da origem e da saída. O cadastro
 relaciona os códigos de seis e sete dígitos e os nomes oficiais. Esta carga não
-preenche população: a série anual será integrada em uma etapa própria.
+preenche população: a série histórica tem seu próprio ETL e tabela anual.
+
+Para obter as publicações oficiais de população e gerar a série:
+
+```powershell
+.venv\Scripts\python.exe -B -m pipelines.etl_populacao --baixar
+```
+
+O comando reutiliza os arquivos de `data/raw/populacao/` quando seus hashes
+conferem; não baixa tudo novamente. Sem `--baixar`, usa somente as cópias locais.
+As saídas são `data/processed/populacao_municipal.csv` e seu resumo JSON.
+
+A série mantém o ano de aplicação e a data de referência separados:
+
+- 2020, 2021 e 2024–2026: estimativas oficiais com referência em julho do ano.
+- 2022: população censitária da exportação IBGE recebida, referência em agosto de 2022.
+- 2023: relação enviada ao TCU baseada no Censo 2022 e malha territorial 2023,
+  identificada como `relacao_censitaria`, com referência em agosto de 2022.
+
+Essas referências não formam uma série de estimativas com metodologia uniforme.
+2023 não é apresentado como uma estimativa independente. O tipo, a fonte e o
+hash acompanham cada registro. A coluna estimada de 2026 do CSV recebido foi
+conferida: os 78 valores coincidem com a publicação oficial de 2026, enquanto
+a nota do arquivo menciona 2024. O ETL usa a fonte anual oficial para essa série.
 
 Valide a fonte antes da carga. Este comando **não conecta nem altera o banco**:
 
@@ -158,6 +184,8 @@ Valide a fonte antes da carga. Este comando **não conecta nem altera o banco**:
 ```
 
 Para conferir somente o cadastro nominal, use o mesmo comando com `--municipios`.
+Para conferir a população anual, use `--populacao`. Esses dois modos de
+conferência também não conectam ao banco até receberem `--aplicar`.
 
 ## Aplicar no banco
 
@@ -188,6 +216,25 @@ Para aplicar os nomes do IBGE, depois de gerar e conferir o cadastro:
 Essa operação atualiza somente os nomes, preserva códigos/populações e todos
 os casos de dengue, e salva um backup dos municípios antes de modificá-los.
 
+Para carregar a série populacional:
+
+```powershell
+.venv\Scripts\python.exe -B -m backend.povoar_banco --populacao --aplicar
+```
+
+O carregador cria `populacoes_municipais` quando necessário e sincroniza por
+município/ano, preservando casos e cadastro. Na primeira carga insere 546 linhas;
+repetir a mesma fonte mantém os dados. Revisões de linhas existentes recebem
+backup antes da atualização. A definição das tabelas fica em `backend/models.py`;
+o SQLAlchemy gera o DDL necessário ao criar tabelas ausentes. Alterações futuras
+em tabelas existentes precisarão de migrações próprias; não mantemos uma cópia
+manual do DDL que apenas repita os modelos.
+
+O antigo campo `municipios.populacao` é mantido por compatibilidade e não deve
+ser usado como denominador de todos os anos. Consulte a tabela anual e sua
+`data_referencia`, `tipo` e `observacao`. A definição dos indicadores e a
+avaliação de cobertura do SINAN continuam pendentes.
+
 ## Executar API e dashboard
 
 API, em um terminal na raiz:
@@ -202,6 +249,8 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
 - `GET /municipios`: lista municípios cadastrados.
 - `GET /casos`: consulta o histórico, com filtros opcionais `ano`,
   `codigo_municipio` e `semana`; inclui `nome_municipio` na resposta.
+- `GET /populacoes`: referências populacionais e suas fontes, com filtros
+  opcionais `ano` e `codigo_municipio`.
 
 Dashboard, em outro terminal na raiz:
 
@@ -220,7 +269,7 @@ O dashboard consulta a API e renova o cache a cada 60 segundos.
 Os testes automatizados de banco usam SQLite local. A conexão, a carga e as
 consultas da API também foram verificadas diretamente no PostgreSQL da equipe.
 
-As próximas etapas são população IBGE, clima INMET, definição dos indicadores,
+As próximas etapas são clima INMET, avaliação de cobertura, definição dos indicadores,
 ML com validação temporal, LLM com function calling e RAG.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 

@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -8,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, DatabaseConfigurationError, database_url, get_db
 from backend.main import app
-from backend.models import CasoDengue, Municipio
+from backend.models import CasoDengue, Municipio, PopulacaoMunicipal
 
 
 class DatabaseConfigTests(unittest.TestCase):
@@ -96,6 +97,24 @@ class ApiTests(unittest.TestCase):
         app.dependency_overrides[get_db] = unavailable
         self.assertEqual(self.client.get("/casos").status_code, 503)
         self.assertEqual(self.client.get("/health").status_code, 200)
+
+    def test_populacoes_expoe_referencia_e_preserva_filtros(self):
+        with self.sessions.begin() as session:
+            session.add(PopulacaoMunicipal(
+                codigo_ibge="320530", codigo_ibge_completo="3205309", ano=2023,
+                populacao=322869, data_referencia=date(2022, 8, 1), tipo="relacao_censitaria",
+                fonte_url="https://ftp.ibge.gov.br/exemplo.ods", fonte_sha256="a" * 64,
+                observacao="Relação 2023 baseada no Censo 2022.",
+            ))
+        response = self.client.get("/populacoes?ano=2023&codigo_municipio=320530")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        row = response.json()[0]
+        self.assertEqual(row["nome_municipio"], "Vitória")
+        self.assertEqual(row["data_referencia"], "2022-08-01")
+        self.assertEqual(row["tipo"], "relacao_censitaria")
+        self.assertEqual(self.client.get("/populacoes?ano=2024").json(), [])
+        self.assertEqual(self.client.get("/populacoes?codigo_municipio=310620").status_code, 422)
 
 
 if __name__ == "__main__":

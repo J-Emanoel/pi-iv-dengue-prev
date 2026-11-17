@@ -6,10 +6,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.database import DatabaseConfigurationError, get_db
-from backend.models import CasoDengue, Municipio
-from backend.schemas import CasoResponse, MunicipioResponse
+from backend.models import CasoDengue, Municipio, PopulacaoMunicipal
+from backend.schemas import CasoResponse, MunicipioResponse, PopulacaoResponse
 
-app = FastAPI(title="API DenguePrev - ES", version="0.3.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.4.0")
 
 
 @app.exception_handler(DatabaseConfigurationError)
@@ -58,3 +58,20 @@ def listar_casos(
     return query.order_by(
         CasoDengue.ano, CasoDengue.semana_epidemiologica, CasoDengue.codigo_ibge
     ).all()
+
+
+@app.get("/populacoes", response_model=list[PopulacaoResponse])
+def listar_populacoes(
+    ano: int | None = Query(default=None, ge=1900, le=9998),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    db: Session = Depends(get_db),
+):
+    tabela = PopulacaoMunicipal.__table__
+    query = db.query(*tabela.columns, Municipio.nome.label("nome_municipio")).join(
+        Municipio, PopulacaoMunicipal.codigo_ibge == Municipio.codigo_ibge,
+    )
+    if ano is not None:
+        query = query.filter(PopulacaoMunicipal.ano == ano)
+    if codigo_municipio is not None:
+        query = query.filter(PopulacaoMunicipal.codigo_ibge == codigo_municipio)
+    return query.order_by(PopulacaoMunicipal.ano, PopulacaoMunicipal.codigo_ibge).all()

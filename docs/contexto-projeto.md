@@ -70,12 +70,14 @@ nem alertas oficiais de saúde.
 
 O desenvolvimento segue para a entrega final, conforme a orientação recebida.
 O cadastro nominal IBGE foi implementado e aplicado no Supabase com backup;
-as próximas integrações da base são população anual e clima INMET.
+a população por município/ano também já foi integrada e conferida. As próximas
+pendências da base são clima INMET, cobertura e indicadores.
 
 - [x] C1 e C2 entregues.
 - [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
 - [x] Cadastro IBGE com 78 nomes reais, correspondência de códigos e nomes na API/Streamlit.
-- [ ] População por município/ano, definição do indicador e validação da cobertura.
+- [x] População por município/ano com 546 referências documentadas no Supabase.
+- [ ] Definição dos indicadores e validação da cobertura epidemiológica.
 - [ ] Clima INMET e associação entre municípios e estações.
 - [ ] Base analítica integrada e consultas de indicadores no backend.
 - [ ] ML avaliado e previsões disponíveis pela API.
@@ -91,6 +93,8 @@ as próximas integrações da base são população anual e clima INMET.
 - Carga com validação, backup, transação e repetição sem duplicar registros.
 - API FastAPI com `/health`, `/municipios` e `/casos`, incluindo filtros.
 - Cadastro IBGE com os 78 nomes oficiais; `/casos` inclui `nome_municipio`.
+- Populações de 2020 a 2026 com origem, data de referência e tipo, consultáveis
+  em `/populacoes`; casos, IDs e cadastro preservados após a carga.
 - Streamlit consumindo a API e testes automatizados da inspeção, ETL, carga e API.
 - Credenciais locais em `.env`, ignoradas pelo Git; exemplo fictício versionado.
 
@@ -99,7 +103,7 @@ as próximas integrações da base são população anual e clima INMET.
 | Etapa | Entrega | Condição para considerar concluída |
 | --- | --- | --- |
 | 1. Cadastro municipal — concluído | Nomes IBGE, correspondência de códigos e exibição na API/Streamlit. | 78 nomes reais, correspondência completa e contagens/IDs SINAN preservados no Supabase. |
-| 2. Indicadores e população | Definição do numerador, avaliação da cobertura e população por município/ano. | Fontes e referências temporais documentadas; indicador validado com exemplos. |
+| 2. População concluída; indicadores pendentes | Série populacional integrada; faltam definição do numerador e avaliação da cobertura. | Fontes e referências documentadas; indicador ainda precisa ser validado. |
 | 3. Clima INMET | ETL meteorológico, qualidade dos sensores e vínculo município/estação. | Agregados semanais e cobertura verificáveis; nenhuma associação presumida pelo nome. |
 | 4. Base analítica e backend | Integração semanal, migrações SQL e consultas de indicadores/clima. | Chaves únicas, junções sem multiplicar linhas e ausência diferenciada de zero. |
 | 5. Machine Learning | Previsão de referência, comparação de modelos e serviço de previsões. | Avaliação temporal, métricas e limitações publicadas; modelo comparado à referência. |
@@ -174,13 +178,29 @@ com o CSV comprova a carga, mas não resolve a representatividade da fonte.
 Documentar o período utilizável, o caráter parcial de 2026 e as lacunas antes
 de tratar ausência como zero ou iniciar a comparação de modelos.
 
-**População:** o CSV recebido contém Censo 2022 e uma coluna estimada com
-divergência entre o ano do cabeçalho e as notas. Os nomes podem ser aproveitados
-independentemente desse problema. Para indicadores históricos, obter e validar
-população por município, ano, fonte e data de referência. O campo único
-`municipios.populacao` não representa essa série. Planejar uma tabela anual e
-sua migração SQL antes de calcular taxas; a etapa 1 mantém a população como está.
+**População — integrada:** o CSV recebido contém Censo 2022 e uma coluna
+estimada de 2026 com nota de 2024. A conferência posterior mostrou que seus
+78 valores estimados coincidem com a publicação oficial de 2026. Foram obtidas
+as fontes oficiais específicas de cada ano, com versões e hashes fixados em
+`pipelines/etl_populacao.py`. O Censo 2022 veio da exportação recebida.
+
+`populacoes_municipais` tem chave município/ano, código completo, população,
+data de referência, tipo, fonte, hash e observação. São 546 linhas para 78
+municípios em 2020–2026. A estrutura é definida em `backend/models.py`, que
+o SQLAlchemy usa para criar a tabela ausente. A carga é transacional, não altera
+casos nem cadastro e não modifica linhas já iguais; revisões recebem backup.
+
+2020, 2021 e 2024–2026 são estimativas com referência em julho. 2022 é censitário,
+com referência em agosto de 2022. Para 2023 foi usada a relação oficial enviada
+ao TCU baseada no Censo 2022 e malha 2023, identificada separadamente. Não é uma
+estimativa independente de 2023. A quebra metodológica e as revisões precisam
+ser consideradas nos indicadores e na avaliação temporal do ML.
+
+O campo legado `municipios.populacao` permanece como estava; a série anual é
+a fonte para os denominadores. O endpoint `/populacoes` permite consultar ano,
+município, valores e referências. Os indicadores continuam pendentes.
 [Estimativas municipais do IBGE](https://www.ibge.gov.br/estatisticas/sociais/populacao/9103-estimativas-de-populacao.html).
+[Relação municipal publicada em 2023](https://agenciadenoticias.ibge.gov.br/agencia-sala-de-imprensa/2013-agencia-de-noticias/releases/37758-ibge-divulga-relacao-da-populacao-dos-municipios).
 
 **Clima:** processar as séries das estações INMET, preservar horários UTC e
 definir o fuso da agregação semanal. Acompanhar horas válidas de precipitação,
@@ -190,9 +210,10 @@ qualidade dos dados. O pacote não contém clima de 2026: obter essa fonte ou
 delimitar o período comum, sem inventar valores.
 
 **Base analítica e banco:** integrar calendário epidemiológico, contagens,
-população anual, clima e indicadores de cobertura. Versionar DDL e migrações
-quando surgirem tabelas ou mudanças de estrutura, pois `create_all()` não
-atualiza tabelas existentes. Acrescentar endpoints conforme os dados e cálculos
+população anual, clima e indicadores de cobertura. Os modelos Python definem
+as tabelas usadas pela aplicação. Para mudanças em estruturas existentes,
+versionar migrações específicas, pois `create_all()` não atualiza tabelas
+existentes. Não manter cópias manuais do esquema completo. Acrescentar endpoints conforme os dados e cálculos
 ficarem disponíveis, com respostas e filtros validados.
 
 **ML:** definir o alvo e o horizonte de uma ou duas semanas. Comparar uma
@@ -215,8 +236,8 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 
 ### Continuidade até a entrega final
 
-A prioridade atual é completar a base: população anual, avaliação da cobertura,
-clima e consolidação semanal. As decisões metodológicas dessas fontes precedem
+A prioridade atual é completar a base: clima, avaliação da cobertura e
+consolidação semanal, usando a população já integrada. As decisões metodológicas precedem
 o treinamento. Em seguida, completar ML, assistente, RAG, interface e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
 

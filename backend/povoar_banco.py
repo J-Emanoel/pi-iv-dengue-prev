@@ -7,17 +7,17 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import bindparam, delete, func, insert, select, text, update
+from sqlalchemy import bindparam, delete, func, insert, inspect, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.database import Base, DatabaseConfigurationError, get_engine
-from backend.models import CasoDengue, Municipio
+from backend.models import CasoDengue, Municipio, PopulacaoMunicipal
 from pipelines.arquivos import sha256_arquivo
 from pipelines.calendario import semanas_no_ano
 from pipelines.etl_ibge import (
@@ -25,6 +25,13 @@ from pipelines.etl_ibge import (
     OUTPUT_JSON as DEFAULT_CADASTRO_SUMMARY,
     carregar_cadastro,
     validar_cadastro,
+)
+from pipelines.etl_populacao import (
+    OUTPUT_CSV as DEFAULT_POP_CSV,
+    OUTPUT_JSON as DEFAULT_POP_SUMMARY,
+    COLUNAS as COLUNAS_POPULACAO,
+    carregar_populacao,
+    validar_populacoes,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +124,7 @@ def salvar_backup(rows, pasta, *, tabela="casos"):
     campos = {
         "casos": ["id", "codigo_ibge", "ano", "semana_epidemiologica", "quantidade_casos"],
         "municipios": ["codigo_ibge", "nome", "populacao"],
+        "populacao": list(COLUNAS_POPULACAO),
     }
     # O backup é somente de registros agregados, não de pessoas.
     with path.open("x", encoding="utf-8", newline="") as stream:
@@ -248,16 +256,70 @@ def sincronizar_municipios(engine, registros, *, backup_dir=DEFAULT_BACKUP):
     return resultado
 
 
+def sincronizar_populacoes(engine, registros, *, backup_dir=DEFAULT_BACKUP):
+    """Sincroniza somente a população anual; casos e cadastro ficam intactos."""
+    if not registros:
+        raise ValueError("Fonte populacional vazia.")
+    cadastro = list({row["codigo_ibge"]: dict(
+        codigo_municipio=row["codigo_ibge"], codigo_ibge_completo=row["codigo_ibge_completo"],
+    ) for row in registros}.values())
+    anos = sorted({row["ano"] for row in registros})
+    validar_populacoes(registros, cadastro, anos)
+    preparados = [{**row, "data_referencia": date.fromisoformat(row["data_referencia"])} for row in registros]
+    tabela = PopulacaoMunicipal.__table__
+    campos = [column.name for column in tabela.columns if not column.primary_key]
+    resultado = dict(inseridos=0, atualizados=0, mantidos=0, backup=None)
+    with engine.begin() as connection:
+        if not inspect(connection).has_table("municipios"):
+            raise ValueError("Carregue primeiro o cadastro municipal.")
+        existentes = set(connection.execute(select(Municipio.codigo_ibge)).scalars())
+        if {row["codigo_ibge"] for row in preparados} - existentes:
+            raise ValueError("População com municípios ainda não cadastrados no banco.")
+        tabela.create(bind=connection, checkfirst=True)
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("LOCK TABLE populacoes_municipais IN SHARE ROW EXCLUSIVE MODE"))
+        atuais = list(connection.execute(select(tabela).where(tabela.c.ano.in_(anos))).mappings())
+        por_chave = {(row["codigo_ibge"], row["ano"]): row for row in atuais}
+        novas_chaves = {(row["codigo_ibge"], row["ano"]) for row in preparados}
+        if set(por_chave) - novas_chaves:
+            raise ValueError("População existente fora da fonte nos anos cobertos; revise o cadastro.")
+        insercoes, alteracoes = [], []
+        for row in preparados:
+            anterior = por_chave.get((row["codigo_ibge"], row["ano"]))
+            if anterior is None:
+                insercoes.append(row)
+            elif any(anterior[campo] != row[campo] for campo in campos):
+                alteracoes.append({"codigo_alvo": row["codigo_ibge"], "ano_alvo": row["ano"],
+                                   **{"novo_" + campo: row[campo] for campo in campos}})
+        if alteracoes:
+            resultado["backup"] = salvar_backup(atuais, backup_dir, tabela="populacao")
+        for lote in blocos(insercoes):
+            connection.execute(insert(tabela), lote)
+        for lote in blocos(alteracoes):
+            connection.execute(update(tabela).where(
+                tabela.c.codigo_ibge == bindparam("codigo_alvo"), tabela.c.ano == bindparam("ano_alvo"),
+            ).values({campo: bindparam("novo_" + campo) for campo in campos}), lote)
+        resultado.update(inseridos=len(insercoes), atualizados=len(alteracoes),
+                         mantidos=len(preparados) - len(insercoes) - len(alteracoes),
+                         linhas_no_periodo=connection.scalar(select(func.count()).select_from(tabela).where(tabela.c.ano.in_(anos))))
+    return resultado
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
     parser.add_argument("--resumo", type=Path)
-    parser.add_argument("--municipios", action="store_true", help="Confere ou atualiza somente o cadastro nominal IBGE.")
+    modo = parser.add_mutually_exclusive_group()
+    modo.add_argument("--municipios", action="store_true", help="Confere ou atualiza somente o cadastro nominal IBGE.")
+    modo.add_argument("--populacao", action="store_true", help="Confere ou sincroniza somente a população por município/ano.")
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP)
     parser.add_argument("--aplicar", action="store_true", help="Sincroniza o banco configurado em DATABASE_URL.")
     args = parser.parse_args(argv)
     try:
-        if args.municipios:
+        if args.populacao:
+            fonte = carregar_populacao(args.input or DEFAULT_POP_CSV, args.resumo or DEFAULT_POP_SUMMARY)
+            print(f"População validada: {len(fonte)} registros por município/ano, com referências documentadas.")
+        elif args.municipios:
             fonte = carregar_cadastro(
                 args.input or DEFAULT_CADASTRO_CSV, args.resumo or DEFAULT_CADASTRO_SUMMARY,
             )
@@ -269,7 +331,7 @@ def main(argv=None):
         if not args.aplicar:
             print("Conferência concluída. Para sincronizar o banco, execute com --aplicar.")
             return 0
-        sincronizar = sincronizar_municipios if args.municipios else sincronizar_casos
+        sincronizar = sincronizar_populacoes if args.populacao else sincronizar_municipios if args.municipios else sincronizar_casos
         result = sincronizar(get_engine(), fonte, backup_dir=args.backup_dir)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

@@ -4,6 +4,12 @@ Este documento registra a análise inicial das fontes. Para os critérios do ETL
 implementado, os totais corrigidos e o ponto atual do desenvolvimento, consulte
 o [README principal](../README.md).
 
+Atualização posterior à análise inicial: a integração populacional confirmou
+que a coluna estimada de 2026 da exportação coincide nos 78 municípios com a
+publicação oficial de 2026; a nota de 2024 está desatualizada. A série carregada
+utiliza fontes anuais identificadas e trata separadamente a relação censitária
+publicada em 2023, conforme o [contexto do projeto](contexto-projeto.md).
+
 Análise realizada em 24/10/2026 sobre `arquivos-proj-int-iv.zip`. A proposta é tecnicamente executável, mas a cobertura epidemiológica do Espírito Santo precisa ser validada antes do treinamento. Este documento registra observações e propostas; não define a fonte final nem publica bases no GitHub.
 
 O pacote tem 956.346.013 bytes (912,04 MiB), contém 13 ZIPs e um CSV avulso e reúne 3.478 CSVs. O conteúdo final ocuparia 6.300.884.379 bytes (5,87 GiB) descompactado. SHA-256 do pacote: `fdfeabaa760343234ee0ebcfe1bdaebe6c69766a851858907967c0e900b5d26c`.
