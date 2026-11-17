@@ -37,9 +37,11 @@ A incidência será `(casos / populacao) * 100000`, respeitando a definição do
 numerador e a referência do denominador. Ainda é necessário escolher entre
 notificações, prováveis ou confirmados para definir `casos`.
 
-Estações INMET são entidades próprias. O vínculo entre município e estação
-será definido posteriormente com dados geográficos e critérios documentados.
-Até essa definição, não atribuir clima aos municípios por suposição.
+Estações INMET são entidades próprias. O vínculo geográfico anual usa o
+centroide oficial do município e a estação ES mais próxima entre as presentes
+no pacote de cada ano. Distância, coordenadas e método ficam registrados.
+Essa aproximação ainda exige avaliação de representatividade meteorológica;
+não corresponde a uma medição direta do clima municipal.
 
 O período comum recebido é 2020–2025, com limitações documentadas na análise.
 O SINAN de 2026 é parcial e não há INMET de 2026 no pacote. A divisão temporal
@@ -70,15 +72,17 @@ nem alertas oficiais de saúde.
 
 O desenvolvimento segue para a entrega final, conforme a orientação recebida.
 O cadastro nominal IBGE foi implementado e aplicado no Supabase com backup;
-a população por município/ano também já foi integrada e conferida. As próximas
-pendências da base são clima INMET, cobertura e indicadores.
+a população por município/ano e o clima INMET também foram integrados e
+conferidos. As próximas pendências são cobertura, indicadores e a base analítica.
 
 - [x] C1 e C2 entregues.
 - [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
 - [x] Cadastro IBGE com 78 nomes reais, correspondência de códigos e nomes na API/Streamlit.
 - [x] População por município/ano com 546 referências documentadas no Supabase.
 - [ ] Definição dos indicadores e validação da cobertura epidemiológica.
-- [ ] Clima INMET e associação entre municípios e estações.
+- [x] ETL INMET e carga no Supabase: 13 estações e 3.873 registros semanais.
+- [x] Associação geográfica anual: 468 vínculos com distância, método e referências.
+- [ ] Avaliação da cobertura dos sensores e da representatividade dos vínculos.
 - [ ] Base analítica integrada e consultas de indicadores no backend.
 - [ ] ML avaliado e previsões disponíveis pela API.
 - [ ] LLM com function calling e RAG fundamentado em documentos.
@@ -95,6 +99,10 @@ pendências da base são clima INMET, cobertura e indicadores.
 - Cadastro IBGE com os 78 nomes oficiais; `/casos` inclui `nome_municipio`.
 - Populações de 2020 a 2026 com origem, data de referência e tipo, consultáveis
   em `/populacoes`; casos, IDs e cadastro preservados após a carga.
+- Clima de 2020–2025 em `/clima` e catálogo em `/estacoes`, com horas válidas,
+  cobertura por sensor, fuso e origem; ausência diferenciada de zero.
+- Vínculos municipais por ano em `/vinculos-estacoes`, usando centroides IBGE
+  e metadados anuais INMET; adequação meteorológica ainda não validada.
 - Streamlit consumindo a API e testes automatizados da inspeção, ETL, carga e API.
 - Credenciais locais em `.env`, ignoradas pelo Git; exemplo fictício versionado.
 
@@ -104,7 +112,7 @@ pendências da base são clima INMET, cobertura e indicadores.
 | --- | --- | --- |
 | 1. Cadastro municipal — concluído | Nomes IBGE, correspondência de códigos e exibição na API/Streamlit. | 78 nomes reais, correspondência completa e contagens/IDs SINAN preservados no Supabase. |
 | 2. População concluída; indicadores pendentes | Série populacional integrada; faltam definição do numerador e avaliação da cobertura. | Fontes e referências documentadas; indicador ainda precisa ser validado. |
-| 3. Clima INMET | ETL meteorológico, qualidade dos sensores e vínculo município/estação. | Agregados semanais e cobertura verificáveis; nenhuma associação presumida pelo nome. |
+| 3. Clima integrado; adequação pendente | ETL e vínculo geográfico implementados; falta definir critérios de uso dos sensores e das distâncias. | Cobertura verificável e limites de uso documentados antes do ML. |
 | 4. Base analítica e backend | Integração semanal, migrações SQL e consultas de indicadores/clima. | Chaves únicas, junções sem multiplicar linhas e ausência diferenciada de zero. |
 | 5. Machine Learning | Previsão de referência, comparação de modelos e serviço de previsões. | Avaliação temporal, métricas e limitações publicadas; modelo comparado à referência. |
 | 6. LLM/function calling | Assistente consultando funções reais do backend. | Respostas conferidas contra resultados das funções, com parâmetros validados. |
@@ -202,12 +210,35 @@ município, valores e referências. Os indicadores continuam pendentes.
 [Estimativas municipais do IBGE](https://www.ibge.gov.br/estatisticas/sociais/populacao/9103-estimativas-de-populacao.html).
 [Relação municipal publicada em 2023](https://agenciadenoticias.ibge.gov.br/agencia-sala-de-imprensa/2013-agencia-de-noticias/releases/37758-ibge-divulga-relacao-da-populacao-dos-municipios).
 
-**Clima:** processar as séries das estações INMET, preservar horários UTC e
-definir o fuso da agregação semanal. Acompanhar horas válidas de precipitação,
-temperatura e umidade; uma semana sem valores permanece ausente. Definir a
-associação das 13 estações aos 78 municípios com referência geográfica e
-qualidade dos dados. O pacote não contém clima de 2026: obter essa fonte ou
-delimitar o período comum, sem inventar valores.
+**Clima — integrado, com limitações:** `pipelines/etl_inmet.py` processou os
+74 CSVs ES dos pacotes de 2020–2025: 648.840 horas de estação e 3.873 agregados.
+Os horários originais permanecem em UTC; a semana epidemiológica é calculada
+em `America/Sao_Paulo`. A chuva soma horas válidas; as médias usam medições
+válidas, combinando os arquivos antes da agregação. Os três sensores têm
+contagens de horas e cobertura sobre 168 horas, inclusive nas bordas parciais.
+Ausência não é convertida em zero; não há imputação.
+
+`pipelines/vincular_estacoes.py` usa os centroides oficiais da API de malhas
+IBGE, fixados por hash, e os metadados INMET de cada ano. A menor distância
+de Haversine entre as estações ES presentes no pacote anual define um vínculo
+por município/ano. Há 13 estações candidatas em 2020–2022, 12 em 2023–2024 e
+11 em 2025; são 468 vínculos, com distância máxima de 74,030 km. O método
+não usa altitude ou barreiras do relevo e não prova representatividade
+meteorológica. Não seleciona automaticamente outra estação pela cobertura dos
+sensores. O vínculo é retrospectivo: antes de usá-lo no ML, verificar também
+a disponibilidade da estação e das medições na data de cada previsão.
+
+As tabelas `estacoes_inmet`, `clima_semanal` e `municipios_estacoes` estão no
+Supabase, com consultas na API. A carga foi conferida integralmente contra as
+fontes; a repetição não alterou linhas. Municípios, casos/IDs e populações
+permaneceram iguais. As definições SQL continuam em `backend/models.py`.
+
+Há 316 semanas sem chuva válida, 161 sem temperatura válida e 349 sem umidade
+válida. Os valores nulos e as coberturas permitem definir critérios explícitos
+de uso na base analítica. O pacote não contém clima de 2026: obter essa fonte
+ou delimitar o período comum. Avaliar essas limitações antes do treinamento.
+[Orientações do INMET](https://portal.inmet.gov.br/noticias/saiba-como-acessar-os-dados-meteorol%C3%B3gicos-dispon%C3%ADveis-no-site-do-inmet).
+[API de malhas do IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3).
 
 **Base analítica e banco:** integrar calendário epidemiológico, contagens,
 população anual, clima e indicadores de cobertura. Os modelos Python definem
@@ -236,8 +267,8 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 
 ### Continuidade até a entrega final
 
-A prioridade atual é completar a base: clima, avaliação da cobertura e
-consolidação semanal, usando a população já integrada. As decisões metodológicas precedem
+A prioridade atual é avaliar a cobertura, definir os indicadores e consolidar
+a base semanal usando as fontes já integradas. As decisões metodológicas precedem
 o treinamento. Em seguida, completar ML, assistente, RAG, interface e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
 

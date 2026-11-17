@@ -18,8 +18,14 @@ duplicada. O índice único foi instalado e as consultas da API foram validadas
 contra esse banco. Todos os agregados retornados coincidem com a fonte corrigida.
 Os 78 municípios já possuem nomes do cadastro IBGE, exibidos pela API e pelo
 Streamlit. A população foi integrada em `populacoes_municipais`, com 546
-referências para os 78 municípios de 2020 a 2026. O clima e os indicadores
-ainda precisam ser integrados e validados.
+referências para os 78 municípios de 2020 a 2026. O clima INMET de 2020–2025
+também já foi carregado: 13 estações, 3.873 registros semanais e 468 vínculos
+município/ano por proximidade geográfica. As consultas foram conferidas contra
+as fontes e repetir as cargas não alterou os dados.
+
+Agora faltam a avaliação da cobertura e dos indicadores e a base analítica
+integrada. O vínculo geográfico é uma aproximação: não comprova que uma estação
+represente o clima de todo o município. O pacote não contém clima de 2026.
 
 A conexão real fica somente no `.env` local, ignorado pelo Git. O
 `.env.example` contém valores fictícios; cada participante configura seu acesso
@@ -44,6 +50,8 @@ Ausência de registro não foi convertida em zero.
 | `pipelines/etl_sinan.py` | Lê o ZIP em blocos e gera os agregados semanais. |
 | `pipelines/etl_ibge.py` | Extrai os nomes e valida a correspondência dos códigos municipais. |
 | `pipelines/etl_populacao.py` | Consolida referências populacionais por município/ano e registra a origem. |
+| `pipelines/etl_inmet.py` | Lê as estações ES dos ZIPs anuais e agrega clima com cobertura por sensor. |
+| `pipelines/vincular_estacoes.py` | Usa centroides IBGE para escolher a estação mais próxima em cada pacote anual. |
 | `backend/database.py` | Configura a conexão PostgreSQL a partir do ambiente. |
 | `backend/models.py` | Define tabelas, colunas, relacionamentos e restrições SQL. |
 | `backend/povoar_banco.py` | Confere a fonte e sincroniza os agregados com o banco. |
@@ -177,6 +185,41 @@ hash acompanham cada registro. A coluna estimada de 2026 do CSV recebido foi
 conferida: os 78 valores coincidem com a publicação oficial de 2026, enquanto
 a nota do arquivo menciona 2024. O ETL usa a fonte anual oficial para essa série.
 
+Para gerar o clima e os vínculos geográficos, depois do cadastro IBGE:
+
+```powershell
+.venv\Scripts\python.exe -B -m pipelines.etl_inmet
+.venv\Scripts\python.exe -B -m pipelines.vincular_estacoes --baixar
+```
+
+O primeiro comando lê 74 CSVs das estações ES diretamente dos seis ZIPs INMET,
+sem extrair o pacote inteiro. Gera `estacoes_inmet.csv`, `clima_semanal_inmet.csv`
+e `clima_inmet_resumo.json` em `data/processed/`. O resumo registra metadados
+anuais, hashes e contagens de medições ausentes e inválidas.
+
+Os horários originais permanecem em UTC; a semana de domingo a sábado é
+calculada em `America/Sao_Paulo`, para acompanhar as datas locais do SINAN.
+Chuva é a soma das horas válidas; temperatura e umidade são médias das medições
+válidas. Há contagens por sensor e cobertura em relação às 168 horas da semana,
+inclusive nas semanas parciais das bordas do período. Ausência permanece nula;
+chuva zero continua zero. Não há preenchimento automático de lacunas.
+[Orientações do INMET sobre os dados](https://portal.inmet.gov.br/noticias/saiba-como-acessar-os-dados-meteorol%C3%B3gicos-dispon%C3%ADveis-no-site-do-inmet).
+
+O segundo comando obtém os centroides oficiais dos 78 municípios pela API de
+malhas do IBGE e guarda o snapshot em `data/raw/geografia/`. A versão dos pontos
+é conferida por hash; execuções seguintes reutilizam o arquivo. Sem `--baixar`,
+usa somente a cópia local. Gera `vinculos_municipios_estacoes.csv` e seu resumo.
+Para cada município/ano, escolhe a menor distância ao centroide entre as estações
+ES presentes naquele pacote anual, usando as coordenadas da estação naquele ano.
+O cadastro de estações, por sua vez, mostra o último metadado disponível.
+[API de malhas do IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3).
+
+São 468 associações em 2020–2025, com distância máxima de 74,030 km. Não são
+escolhidas estações ausentes do pacote anual nem são considerados altitude e
+relevo. A adequação meteorológica e os limites mínimos de cobertura serão
+avaliados antes do ML. Entre as 3.873 semanas de estação, 316 não têm chuva
+válida, 161 não têm temperatura válida e 349 não têm umidade válida.
+
 Valide a fonte antes da carga. Este comando **não conecta nem altera o banco**:
 
 ```powershell
@@ -184,8 +227,9 @@ Valide a fonte antes da carga. Este comando **não conecta nem altera o banco**:
 ```
 
 Para conferir somente o cadastro nominal, use o mesmo comando com `--municipios`.
-Para conferir a população anual, use `--populacao`. Esses dois modos de
-conferência também não conectam ao banco até receberem `--aplicar`.
+Para conferir a população anual, use `--populacao`; para o clima, `--clima`;
+para as associações geográficas, `--vinculos`. Todos os modos de conferência
+funcionam sem conexão ao banco até receberem `--aplicar`.
 
 ## Aplicar no banco
 
@@ -235,6 +279,21 @@ ser usado como denominador de todos os anos. Consulte a tabela anual e sua
 `data_referencia`, `tipo` e `observacao`. A definição dos indicadores e a
 avaliação de cobertura do SINAN continuam pendentes.
 
+Para carregar as estações e o clima, seguidos dos vínculos municipais:
+
+```powershell
+.venv\Scripts\python.exe -B -m backend.povoar_banco --clima --aplicar
+.venv\Scripts\python.exe -B -m backend.povoar_banco --vinculos --aplicar
+```
+
+São criadas as tabelas `estacoes_inmet`, `clima_semanal` e `municipios_estacoes`,
+conforme os modelos Python. Os vínculos exigem municípios e estações previamente
+cadastrados. Cada comando usa transação, validação de chaves e backup antes de
+revisar dados existentes. Repetir a mesma fonte mantém as linhas; divergências
+fora da fonte no período coberto interrompem a carga para revisão. Casos,
+nomes e populações existentes são preservados. Esta carga já foi aplicada e
+conferida no Supabase compartilhado; não é necessário repeti-la para usar a API.
+
 ## Executar API e dashboard
 
 API, em um terminal na raiz:
@@ -251,6 +310,16 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
   `codigo_municipio` e `semana`; inclui `nome_municipio` na resposta.
 - `GET /populacoes`: referências populacionais e suas fontes, com filtros
   opcionais `ano` e `codigo_municipio`.
+- `GET /estacoes`: catálogo INMET com coordenadas e último metadado disponível.
+- `GET /clima`: observações semanais por estação e cobertura por sensor, com
+  filtros opcionais `ano`, `codigo_estacao` e `semana`.
+- `GET /vinculos-estacoes`: associação geográfica, distância, referências e
+  limitações, com filtros opcionais `ano` e `codigo_municipio`.
+
+Exemplo: `/vinculos-estacoes?ano=2025&codigo_municipio=320530` retorna o vínculo
+de Vitória à estação A612, a aproximadamente 1,248 km do centroide municipal.
+`/clima?ano=2025&codigo_estacao=A612` consulta suas observações e coberturas.
+Essas medidas são da estação, sem atribuição de medição municipal direta.
 
 Dashboard, em outro terminal na raiz:
 
@@ -269,8 +338,9 @@ O dashboard consulta a API e renova o cache a cada 60 segundos.
 Os testes automatizados de banco usam SQLite local. A conexão, a carga e as
 consultas da API também foram verificadas diretamente no PostgreSQL da equipe.
 
-As próximas etapas são clima INMET, avaliação de cobertura, definição dos indicadores,
-ML com validação temporal, LLM com function calling e RAG.
+As próximas etapas são avaliação de cobertura, definição dos indicadores e
+consolidação da base analítica, seguidas de ML com validação temporal, LLM com
+function calling e RAG.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).

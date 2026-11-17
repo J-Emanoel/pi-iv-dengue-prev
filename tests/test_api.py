@@ -10,6 +10,8 @@ from sqlalchemy.pool import StaticPool
 from backend.database import Base, DatabaseConfigurationError, database_url, get_db
 from backend.main import app
 from backend.models import CasoDengue, Municipio, PopulacaoMunicipal
+from backend.povoar_banco import sincronizar_clima, sincronizar_vinculos
+from tests.test_inmet import fonte_clima, fonte_vinculos
 
 
 class DatabaseConfigTests(unittest.TestCase):
@@ -115,6 +117,38 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(row["tipo"], "relacao_censitaria")
         self.assertEqual(self.client.get("/populacoes?ano=2024").json(), [])
         self.assertEqual(self.client.get("/populacoes?codigo_municipio=310620").status_code, 422)
+
+    def test_clima_expoe_medicoes_e_cobertura_por_estacao(self):
+        sincronizar_clima(self.engine, fonte_clima())
+        stations = self.client.get("/estacoes")
+        self.assertEqual(stations.status_code, 200)
+        self.assertEqual(stations.json()[0]["codigo"], "A612")
+        response = self.client.get("/clima?ano=2025&codigo_estacao=A612&semana=2")
+        self.assertEqual(response.status_code, 200)
+        row = response.json()[0]
+        self.assertEqual(row["nome_estacao"], "VITÓRIA")
+        self.assertEqual(row["precipitacao_mm"], 2)
+        self.assertEqual(row["temperatura_media_c"], 25)
+        self.assertEqual(row["cobertura_precipitacao_pct"], 1.19)
+        self.assertEqual(row["fuso"], "America/Sao_Paulo")
+        self.assertTrue(row["inicio_utc"].endswith("Z"))
+        self.assertEqual(self.client.get("/clima?ano=2026").json(), [])
+        self.assertEqual(self.client.get("/clima?codigo_estacao=320530").status_code, 422)
+
+    def test_vinculos_expoe_distancia_metodo_e_limitacoes_com_nomes(self):
+        sincronizar_clima(self.engine, fonte_clima())
+        sincronizar_vinculos(self.engine, fonte_vinculos())
+        response = self.client.get("/vinculos-estacoes?ano=2025&codigo_municipio=320530")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        row = response.json()[0]
+        self.assertEqual(row["nome_municipio"], "Vitória")
+        self.assertEqual(row["nome_estacao"], "VITÓRIA")
+        self.assertEqual(row["distancia_km"], 0)
+        self.assertIn("mais_proxima_por_ano", row["metodo"])
+        self.assertIn("não comprova representatividade", row["observacao"])
+        self.assertEqual(self.client.get("/vinculos-estacoes?ano=2026").json(), [])
+        self.assertEqual(self.client.get("/vinculos-estacoes?codigo_municipio=3205309").status_code, 422)
 
 
 if __name__ == "__main__":

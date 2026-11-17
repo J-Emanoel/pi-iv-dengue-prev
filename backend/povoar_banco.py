@@ -17,7 +17,9 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.database import Base, DatabaseConfigurationError, get_engine
-from backend.models import CasoDengue, Municipio, PopulacaoMunicipal
+from backend.models import (
+    CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, PopulacaoMunicipal, VinculoMunicipioEstacao,
+)
 from pipelines.arquivos import sha256_arquivo
 from pipelines.calendario import semanas_no_ano
 from pipelines.etl_ibge import (
@@ -32,6 +34,14 @@ from pipelines.etl_populacao import (
     COLUNAS as COLUNAS_POPULACAO,
     carregar_populacao,
     validar_populacoes,
+)
+from pipelines.etl_inmet import (
+    CLIMA_CSV, ESTACOES_CSV, RESUMO_JSON as CLIMA_RESUMO,
+    COLUNAS_CLIMA, COLUNAS_ESTACOES, carregar_clima, validar_clima,
+)
+from pipelines.vincular_estacoes import (
+    COLUNAS as COLUNAS_VINCULOS, OUTPUT_CSV as VINCULOS_CSV, OUTPUT_JSON as VINCULOS_RESUMO,
+    carregar_vinculos, validar_vinculos,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,6 +135,9 @@ def salvar_backup(rows, pasta, *, tabela="casos"):
         "casos": ["id", "codigo_ibge", "ano", "semana_epidemiologica", "quantidade_casos"],
         "municipios": ["codigo_ibge", "nome", "populacao"],
         "populacao": list(COLUNAS_POPULACAO),
+        "estacoes": list(COLUNAS_ESTACOES),
+        "clima": list(COLUNAS_CLIMA),
+        "vinculos": list(COLUNAS_VINCULOS),
     }
     # O backup é somente de registros agregados, não de pessoas.
     with path.open("x", encoding="utf-8", newline="") as stream:
@@ -305,6 +318,105 @@ def sincronizar_populacoes(engine, registros, *, backup_dir=DEFAULT_BACKUP):
     return resultado
 
 
+def sincronizar_clima(engine, fonte, *, backup_dir=DEFAULT_BACKUP):
+    """Sincroniza estações e semanas em uma transação, sem alterar as outras bases."""
+    estacoes, semanas = fonte
+    validar_clima(estacoes, semanas)
+    preparados = [{**row, "data_inicio": date.fromisoformat(row["data_inicio"]),
+                   "inicio_utc": datetime.fromisoformat(row["inicio_utc"]),
+                   "fim_utc": datetime.fromisoformat(row["fim_utc"])} for row in semanas]
+    anos = sorted({row["ano"] for row in semanas})
+
+    def normalizar(row):
+        resultado = dict(row)
+        for campo in ("inicio_utc", "fim_utc"):
+            if campo in resultado:
+                valor = resultado[campo]
+                resultado[campo] = valor.replace(tzinfo=timezone.utc) if valor.tzinfo is None else valor.astimezone(timezone.utc)
+        return resultado
+
+    with engine.begin() as connection:
+        EstacaoMeteorologica.__table__.create(bind=connection, checkfirst=True)
+        ClimaSemanal.__table__.create(bind=connection, checkfirst=True)
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("LOCK TABLE estacoes_inmet, clima_semanal IN SHARE ROW EXCLUSIVE MODE"))
+
+        def sincronizar_tabela(tabela, registros, tipo, condicao=None):
+            chaves = [column.name for column in tabela.primary_key.columns]
+            campos = [column.name for column in tabela.columns if not column.primary_key]
+            consulta = select(tabela)
+            if condicao is not None:
+                consulta = consulta.where(condicao)
+            atuais = [normalizar(row) for row in connection.execute(consulta).mappings()]
+            por_chave = {tuple(row[campo] for campo in chaves): row for row in atuais}
+            esperadas = {tuple(row[campo] for campo in chaves) for row in registros}
+            if tipo == "clima" and set(por_chave) - esperadas:
+                raise ValueError("O banco contém semanas fora da fonte nos anos cobertos; revise antes da carga.")
+            insercoes, alteracoes = [], []
+            for row in registros:
+                anterior = por_chave.get(tuple(row[campo] for campo in chaves))
+                if anterior is None:
+                    insercoes.append(row)
+                elif any(anterior[campo] != row[campo] for campo in campos):
+                    alteracoes.append({**{"alvo_" + campo: row[campo] for campo in chaves},
+                                       **{"novo_" + campo: row[campo] for campo in campos}})
+            backup = salvar_backup(atuais, backup_dir, tabela=tipo) if alteracoes else None
+            for lote in blocos(insercoes):
+                connection.execute(insert(tabela), lote)
+            for lote in blocos(alteracoes):
+                connection.execute(update(tabela).where(*[
+                    tabela.c[campo] == bindparam("alvo_" + campo) for campo in chaves
+                ]).values({campo: bindparam("novo_" + campo) for campo in campos}), lote)
+            return dict(inseridos=len(insercoes), atualizados=len(alteracoes),
+                        mantidos=len(registros) - len(insercoes) - len(alteracoes), backup=backup)
+
+        resultado = {
+            "estacoes": sincronizar_tabela(EstacaoMeteorologica.__table__, estacoes, "estacoes"),
+            "semanas": sincronizar_tabela(ClimaSemanal.__table__, preparados, "clima", ClimaSemanal.ano.in_(anos)),
+        }
+    return resultado
+
+
+def sincronizar_vinculos(engine, registros, *, backup_dir=DEFAULT_BACKUP):
+    """Sincroniza somente os vínculos; exige municípios e estações já cadastrados."""
+    validar_vinculos(registros)
+    tabela = VinculoMunicipioEstacao.__table__
+    anos = sorted({row["ano"] for row in registros})
+    campos = [column.name for column in tabela.columns if not column.primary_key]
+    with engine.begin() as connection:
+        if any(not inspect(connection).has_table(nome) for nome in ("municipios", "estacoes_inmet")):
+            raise ValueError("Carregue primeiro os municípios e as estações INMET.")
+        municipios = set(connection.execute(select(Municipio.codigo_ibge)).scalars())
+        estacoes = set(connection.execute(select(EstacaoMeteorologica.codigo)).scalars())
+        if {row["codigo_ibge"] for row in registros} - municipios or {row["codigo_estacao"] for row in registros} - estacoes:
+            raise ValueError("Vínculos com município ou estação ainda não cadastrados.")
+        tabela.create(bind=connection, checkfirst=True)
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("LOCK TABLE municipios_estacoes IN SHARE ROW EXCLUSIVE MODE"))
+        atuais = list(connection.execute(select(tabela).where(tabela.c.ano.in_(anos))).mappings())
+        por_chave = {(row["codigo_ibge"], row["ano"]): row for row in atuais}
+        esperadas = {(row["codigo_ibge"], row["ano"]) for row in registros}
+        if set(por_chave) - esperadas:
+            raise ValueError("Vínculos existentes fora da fonte nos anos cobertos; revise antes da carga.")
+        insercoes, alteracoes = [], []
+        for row in registros:
+            anterior = por_chave.get((row["codigo_ibge"], row["ano"]))
+            if anterior is None:
+                insercoes.append(row)
+            elif any(anterior[campo] != row[campo] for campo in campos):
+                alteracoes.append({"codigo_alvo": row["codigo_ibge"], "ano_alvo": row["ano"],
+                                   **{"novo_" + campo: row[campo] for campo in campos}})
+        backup = salvar_backup(atuais, backup_dir, tabela="vinculos") if alteracoes else None
+        for lote in blocos(insercoes):
+            connection.execute(insert(tabela), lote)
+        for lote in blocos(alteracoes):
+            connection.execute(update(tabela).where(
+                tabela.c.codigo_ibge == bindparam("codigo_alvo"), tabela.c.ano == bindparam("ano_alvo"),
+            ).values({campo: bindparam("novo_" + campo) for campo in campos}), lote)
+    return dict(inseridos=len(insercoes), atualizados=len(alteracoes),
+                mantidos=len(registros) - len(insercoes) - len(alteracoes), backup=backup)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
@@ -312,11 +424,20 @@ def main(argv=None):
     modo = parser.add_mutually_exclusive_group()
     modo.add_argument("--municipios", action="store_true", help="Confere ou atualiza somente o cadastro nominal IBGE.")
     modo.add_argument("--populacao", action="store_true", help="Confere ou sincroniza somente a população por município/ano.")
+    modo.add_argument("--clima", action="store_true", help="Confere ou sincroniza estações e clima semanal INMET.")
+    modo.add_argument("--vinculos", action="store_true", help="Confere ou sincroniza vínculos geográficos por município/ano.")
+    parser.add_argument("--estacoes", type=Path, default=ESTACOES_CSV, help="CSV de estações, utilizado no modo --clima.")
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP)
     parser.add_argument("--aplicar", action="store_true", help="Sincroniza o banco configurado em DATABASE_URL.")
     args = parser.parse_args(argv)
     try:
-        if args.populacao:
+        if args.vinculos:
+            fonte = carregar_vinculos(args.input or VINCULOS_CSV, args.resumo or VINCULOS_RESUMO)
+            print(f"Vínculos validados: {len(fonte)} associações anuais por proximidade geográfica.")
+        elif args.clima:
+            fonte = carregar_clima(args.input or CLIMA_CSV, args.resumo or CLIMA_RESUMO, args.estacoes)
+            print(f"Clima validado: {len(fonte[0])} estações; {len(fonte[1])} semanas. Vínculos municipais são carregados com --vinculos.")
+        elif args.populacao:
             fonte = carregar_populacao(args.input or DEFAULT_POP_CSV, args.resumo or DEFAULT_POP_SUMMARY)
             print(f"População validada: {len(fonte)} registros por município/ano, com referências documentadas.")
         elif args.municipios:
@@ -331,7 +452,16 @@ def main(argv=None):
         if not args.aplicar:
             print("Conferência concluída. Para sincronizar o banco, execute com --aplicar.")
             return 0
-        sincronizar = sincronizar_populacoes if args.populacao else sincronizar_municipios if args.municipios else sincronizar_casos
+        if args.vinculos:
+            sincronizar = sincronizar_vinculos
+        elif args.clima:
+            sincronizar = sincronizar_clima
+        elif args.populacao:
+            sincronizar = sincronizar_populacoes
+        elif args.municipios:
+            sincronizar = sincronizar_municipios
+        else:
+            sincronizar = sincronizar_casos
         result = sincronizar(get_engine(), fonte, backup_dir=args.backup_dir)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
