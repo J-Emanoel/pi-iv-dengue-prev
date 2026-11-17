@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, event, insert, select, text
 from sqlalchemy.exc import IntegrityError
 
 from backend.models import CasoDengue, Municipio
-from backend.povoar_banco import FonteCarga, carregar_fonte, sincronizar_casos
+from backend.povoar_banco import FonteCarga, carregar_fonte, sincronizar_casos, sincronizar_municipios
 
 
 def record(week=1, quantity=7, year=2024):
@@ -128,6 +128,77 @@ class DatabaseLoadingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fora da fonte"):
             sincronizar_casos(self.engine, FonteCarga([record()], [2024]), backup_dir=self.root)
         self.assertEqual(self.rows(), original)
+
+    def cadastro(self):
+        return [dict(codigo_municipio="320530", codigo_ibge_completo="3205309", nome="Vitória")]
+
+    def test_cadastro_altera_apenas_nome_e_preserva_casos_populacao_e_ids(self):
+        self.seed([record(), record(year=2023)])
+        with self.engine.begin() as conn:
+            conn.execute(text("UPDATE municipios SET nome = 'ES - 320530'"))
+        before = self.rows()
+        first = sincronizar_municipios(self.engine, self.cadastro(), backup_dir=self.root)
+        self.assertEqual(first["atualizados"], 1)
+        with Path(first["backup"]).open(encoding="utf-8", newline="") as stream:
+            backup = list(csv.DictReader(stream))
+        self.assertEqual(backup[0]["nome"], "ES - 320530")
+        self.assertEqual(backup[0]["populacao"], "322869")
+        self.assertEqual(self.rows(), before)
+        with self.engine.connect() as conn:
+            row = conn.execute(select(Municipio.__table__)).mappings().one()
+            self.assertEqual(row["nome"], "Vitória")
+            self.assertEqual(row["populacao"], 322869)
+        again = sincronizar_municipios(self.engine, self.cadastro(), backup_dir=self.root)
+        self.assertEqual(again["atualizados"], 0)
+        self.assertIsNone(again["backup"])
+
+    def test_cadastro_nao_aplica_fonte_sem_cobertura_do_banco(self):
+        original = self.rows()
+        other = [dict(codigo_municipio="320520", codigo_ibge_completo="3205200", nome="Vila Velha")]
+        with self.assertRaisesRegex(ValueError, "sem correspondência"):
+            sincronizar_municipios(self.engine, other, backup_dir=self.root)
+        self.assertEqual(self.rows(), original)
+
+    def test_falha_durante_cadastro_reverte_os_nomes(self):
+        with self.engine.begin() as conn:
+            conn.execute(text("UPDATE municipios SET nome = 'provisorio'"))
+        def fail_update(connection, cursor, statement, parameters, context, many):
+            if statement.upper().startswith("UPDATE MUNICIPIOS"):
+                raise RuntimeError("falha simulada")
+        event.listen(self.engine, "before_cursor_execute", fail_update)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "falha simulada"):
+                sincronizar_municipios(self.engine, self.cadastro(), backup_dir=self.root)
+        finally:
+            event.remove(self.engine, "before_cursor_execute", fail_update)
+        with self.engine.connect() as conn:
+            self.assertEqual(conn.execute(select(Municipio.nome)).scalar_one(), "provisorio")
+
+    def test_cadastro_com_backup_inacessivel_nao_muda_nomes(self):
+        with self.engine.begin() as conn:
+            conn.execute(text("UPDATE municipios SET nome = 'provisorio'"))
+        invalid = self.root / "arquivo"
+        invalid.write_text("arquivo", encoding="utf-8")
+        with self.assertRaises(OSError):
+            sincronizar_municipios(self.engine, self.cadastro(), backup_dir=invalid)
+        with self.engine.connect() as conn:
+            self.assertEqual(conn.execute(select(Municipio.nome)).scalar_one(), "provisorio")
+
+
+class NovoCadastroTests(unittest.TestCase):
+    def test_cadastro_em_banco_novo_insere_nome_sem_inventar_populacao(self):
+        engine = create_engine("sqlite://")
+        cadastro = [dict(codigo_municipio="320530", codigo_ibge_completo="3205309", nome="Vitória")]
+        try:
+            result = sincronizar_municipios(engine, cadastro)
+            self.assertEqual(result["inseridos"], 1)
+            with engine.connect() as conn:
+                row = conn.execute(select(Municipio.__table__)).mappings().one()
+                self.assertEqual(row["nome"], "Vitória")
+                self.assertIsNone(row["populacao"])
+                self.assertEqual(list(conn.execute(select(CasoDengue.id))), [])
+        finally:
+            engine.dispose()
 
 
 class SourceValidationTests(unittest.TestCase):

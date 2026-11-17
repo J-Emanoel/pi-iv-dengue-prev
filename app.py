@@ -15,6 +15,7 @@ COLUNAS_API = {
     "ano": "ano_epidemiologico",
     "semana_epidemiologica": "semana_num",
     "quantidade_casos": "registos",
+    "nome_municipio": "nome_municipio",
 }
 
 
@@ -47,11 +48,13 @@ def filtrar_dados(dados: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     ano = st.sidebar.selectbox("Selecione o Ano", anos)
     filtrados = dados[dados["ano_epidemiologico"] == ano].copy()
 
-    municipios = sorted(filtrados["codigo_municipio"].unique())
+    nomes = filtrados.drop_duplicates("codigo_municipio").set_index("codigo_municipio")["nome_municipio"]
+    municipios = sorted(nomes.index, key=lambda codigo: nomes[codigo].casefold())
     todos = st.sidebar.checkbox("Selecionar todos os municípios", value=True)
     if not todos:
         selecionados = st.sidebar.multiselect(
-            "Selecione o(s) Município(s) (Código)", municipios, default=municipios[:5],
+            "Selecione o(s) Município(s)", municipios, default=municipios[:5],
+            format_func=lambda codigo: f"{nomes[codigo]} ({codigo})",
         )
         filtrados = filtrados[filtrados["codigo_municipio"].isin(selecionados)]
     return filtrados, int(ano)
@@ -72,8 +75,9 @@ def exibir_dashboard(dados: pd.DataFrame, ano: int) -> None:
 
     st.markdown("---")
     st.subheader("🏆 Top 10 Municípios com Mais Registros")
-    por_municipio = dados.groupby("codigo_municipio")["registos"].sum()
-    st.bar_chart(por_municipio.sort_values(ascending=False).head(10))
+    por_municipio = dados.groupby(["codigo_municipio", "nome_municipio"])["registos"].sum()
+    maiores = por_municipio.sort_values(ascending=False).head(10).reset_index()
+    st.bar_chart(maiores.set_index("nome_municipio")["registos"])
 
     st.markdown("---")
     st.subheader("📋 Dados Detalhados e Exportação")

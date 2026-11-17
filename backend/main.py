@@ -9,7 +9,7 @@ from backend.database import DatabaseConfigurationError, get_db
 from backend.models import CasoDengue, Municipio
 from backend.schemas import CasoResponse, MunicipioResponse
 
-app = FastAPI(title="API DenguePrev - ES", version="0.2.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.3.0")
 
 
 @app.exception_handler(DatabaseConfigurationError)
@@ -44,7 +44,11 @@ def listar_casos(
     semana: int | None = Query(default=None, ge=1, le=53),
     db: Session = Depends(get_db),
 ):
-    query = db.query(CasoDengue)
+    query = db.query(
+        CasoDengue.id, CasoDengue.codigo_ibge, CasoDengue.ano,
+        CasoDengue.semana_epidemiologica, CasoDengue.quantidade_casos,
+        Municipio.nome.label("nome_municipio"),
+    ).join(Municipio, CasoDengue.codigo_ibge == Municipio.codigo_ibge)
     if ano is not None:
         query = query.filter(CasoDengue.ano == ano)
     if codigo_municipio is not None:

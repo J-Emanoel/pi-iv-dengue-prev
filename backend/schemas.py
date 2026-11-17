@@ -17,5 +17,6 @@ class CasoResponse(BaseModel):
     id: int
     codigo_ibge: str
     ano: int
+    nome_municipio: str
     semana_epidemiologica: int = Field(ge=1, le=53)
     quantidade_casos: int = Field(ge=0, description="Contagem de registros SINAN da fonte.")

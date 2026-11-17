@@ -5,12 +5,24 @@ e desenvolver estimativas de tendência de curto prazo.
 
 ## Onde paramos
 
+C1 e C2 já foram entregues. O objetivo atual é concluir a aplicação completa
+para a entrega final no fim de novembro de 2026. O checklist técnico fica no
+[contexto do projeto](docs/contexto-projeto.md#checklist-da-entrega-final).
+
 O fluxo atual é **ZIP original → ETL → CSV agregado → PostgreSQL → API → Streamlit**.
 
-O colega registrou no README anterior a criação e a carga de um PostgreSQL no
-Supabase. Falta configurar o acesso a esse mesmo banco nesta máquina, conferir
-seu conteúdo e aplicar a correção se necessário. **A correção ainda não foi
-executada no banco online.**
+O acesso ao PostgreSQL compartilhado no Supabase foi configurado nesta máquina.
+**A carga corrigida já foi aplicada e conferida no banco online**: 78 municípios,
+11.679 linhas agregadas, 362.712 registros e nenhuma chave municipal/semanal
+duplicada. O índice único foi instalado e as consultas da API foram validadas
+contra esse banco. Todos os agregados retornados coincidem com a fonte corrigida.
+Os 78 municípios já possuem nomes do cadastro IBGE, exibidos pela API e pelo
+Streamlit. A população anual e o clima ainda precisam ser integrados.
+
+A conexão real fica somente no `.env` local, ignorado pelo Git. O
+`.env.example` contém valores fictícios; cada participante configura seu acesso
+localmente. O backup anterior à correção permanece em `data/interim/backups/`,
+também fora do versionamento.
 
 O ETL corrigido e a carga foram validados localmente. No pacote atual, o resultado
 é **11.679 linhas agregadas e 362.712 registros**, por município de residência,
@@ -28,6 +40,7 @@ Ausência de registro não foi convertida em zero.
 | Local | Responsabilidade |
 | --- | --- |
 | `pipelines/etl_sinan.py` | Lê o ZIP em blocos e gera os agregados semanais. |
+| `pipelines/etl_ibge.py` | Extrai os nomes e valida a correspondência dos códigos municipais. |
 | `backend/database.py` | Configura a conexão PostgreSQL a partir do ambiente. |
 | `backend/models.py` | Define tabelas, colunas, relacionamentos e restrições SQL. |
 | `backend/povoar_banco.py` | Confere a fonte e sincroniza os agregados com o banco. |
@@ -127,11 +140,24 @@ O ETL gera `data/processed/dengue_semanal.csv` e
 exclusões e hashes para conferir a origem. Se esse par já foi gerado pelo ETL
 corrigido, não é necessário repetir o processamento.
 
+Para gerar o cadastro nominal do IBGE a partir do mesmo ZIP:
+
+```powershell
+.venv\Scripts\python.exe -B -m pipelines.etl_ibge
+```
+
+O resultado fica em `data/processed/municipios_ibge.csv`, acompanhado de
+`municipios_ibge_resumo.json`, com hashes da origem e da saída. O cadastro
+relaciona os códigos de seis e sete dígitos e os nomes oficiais. Esta carga não
+preenche população: a série anual será integrada em uma etapa própria.
+
 Valide a fonte antes da carga. Este comando **não conecta nem altera o banco**:
 
 ```powershell
 .venv\Scripts\python.exe -B -m backend.povoar_banco
 ```
+
+Para conferir somente o cadastro nominal, use o mesmo comando com `--municipios`.
 
 ## Aplicar no banco
 
@@ -153,6 +179,15 @@ reverte a transação. Duplicados em anos fora da fonte interrompem a carga para
 revisão. Um índice único impede novas cópias por município, ano e semana.
 Repetir a mesma carga mantém os IDs e deve resultar em zero alterações de dados.
 
+Para aplicar os nomes do IBGE, depois de gerar e conferir o cadastro:
+
+```powershell
+.venv\Scripts\python.exe -B -m backend.povoar_banco --municipios --aplicar
+```
+
+Essa operação atualiza somente os nomes, preserva códigos/populações e todos
+os casos de dengue, e salva um backup dos municípios antes de modificá-los.
+
 ## Executar API e dashboard
 
 API, em um terminal na raiz:
@@ -166,7 +201,7 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
 - `GET /health`: verifica a API, sem testar a conexão com o banco.
 - `GET /municipios`: lista municípios cadastrados.
 - `GET /casos`: consulta o histórico, com filtros opcionais `ano`,
-  `codigo_municipio` e `semana`.
+  `codigo_municipio` e `semana`; inclui `nome_municipio` na resposta.
 
 Dashboard, em outro terminal na raiz:
 
@@ -182,11 +217,11 @@ O dashboard consulta a API e renova o cache a cada 60 segundos.
 .venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider
 ```
 
-Os testes de banco usam SQLite local. A conexão, a carga e as consultas no
-PostgreSQL da equipe ainda precisam ser verificadas.
+Os testes automatizados de banco usam SQLite local. A conexão, a carga e as
+consultas da API também foram verificadas diretamente no PostgreSQL da equipe.
 
-Depois da validação do banco, seguem população IBGE, clima INMET, definição
-dos indicadores, ML com validação temporal, LLM com function calling e RAG.
+As próximas etapas são população IBGE, clima INMET, definição dos indicadores,
+ML com validação temporal, LLM com function calling e RAG.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).

@@ -20,6 +20,12 @@ from backend.database import Base, DatabaseConfigurationError, get_engine
 from backend.models import CasoDengue, Municipio
 from pipelines.arquivos import sha256_arquivo
 from pipelines.calendario import semanas_no_ano
+from pipelines.etl_ibge import (
+    OUTPUT_CSV as DEFAULT_CADASTRO_CSV,
+    OUTPUT_JSON as DEFAULT_CADASTRO_SUMMARY,
+    carregar_cadastro,
+    validar_cadastro,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CSV = ROOT / "data/processed/dengue_semanal.csv"
@@ -102,17 +108,19 @@ def chave(row):
     return row["codigo_ibge"], row["ano"], row["semana_epidemiologica"]
 
 
-def salvar_backup(rows, pasta):
+def salvar_backup(rows, pasta, *, tabela="casos"):
     """Guarda os agregados existentes antes de qualquer correção ou exclusão."""
     pasta = Path(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    path = pasta / f"casos_antes_sincronizacao_{stamp}.csv"
+    path = pasta / f"{tabela}_antes_sincronizacao_{stamp}.csv"
+    campos = {
+        "casos": ["id", "codigo_ibge", "ano", "semana_epidemiologica", "quantidade_casos"],
+        "municipios": ["codigo_ibge", "nome", "populacao"],
+    }
     # O backup é somente de registros agregados, não de pessoas.
     with path.open("x", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=[
-            "id", "codigo_ibge", "ano", "semana_epidemiologica", "quantidade_casos",
-        ])
+        writer = csv.DictWriter(stream, fieldnames=campos[tabela])
         writer.writeheader()
         writer.writerows(dict(row) for row in rows)
     return str(path)
@@ -201,21 +209,68 @@ def sincronizar_casos(engine, fonte, *, backup_dir=DEFAULT_BACKUP):
     return result
 
 
+def sincronizar_municipios(engine, registros, *, backup_dir=DEFAULT_BACKUP):
+    """Atualiza o cadastro nominal sem alterar população, códigos ou casos."""
+    validar_cadastro(registros, quantidade_esperada=None)
+    esperados = {row["codigo_municipio"]: row["nome"] for row in registros}
+    tabela = Municipio.__table__
+    resultado = dict(inseridos=0, atualizados=0, mantidos=0, backup=None)
+    with engine.begin() as connection:
+        Base.metadata.create_all(bind=connection)
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("LOCK TABLE municipios IN SHARE ROW EXCLUSIVE MODE"))
+        atuais = list(connection.execute(select(tabela).order_by(tabela.c.codigo_ibge)).mappings())
+        por_codigo = {row["codigo_ibge"]: row for row in atuais}
+        codigos_casos = set(connection.execute(select(CasoDengue.codigo_ibge).distinct()).scalars())
+        if (set(por_codigo) | codigos_casos) - set(esperados):
+            raise ValueError("O banco contém códigos sem correspondência no cadastro IBGE.")
+        alteracoes = [
+            {"codigo_alvo": codigo, "novo_nome": nome}
+            for codigo, nome in esperados.items()
+            if codigo in por_codigo and por_codigo[codigo]["nome"] != nome
+        ]
+        novos = [
+            dict(codigo_ibge=codigo, nome=nome)
+            for codigo, nome in esperados.items() if codigo not in por_codigo
+        ]
+        if alteracoes:
+            resultado["backup"] = salvar_backup(atuais, backup_dir, tabela="municipios")
+        for lote in blocos(alteracoes):
+            connection.execute(
+                update(tabela).where(tabela.c.codigo_ibge == bindparam("codigo_alvo"))
+                .values(nome=bindparam("novo_nome")), lote,
+            )
+        for lote in blocos(novos):
+            connection.execute(insert(tabela), lote)
+        resultado["atualizados"] = len(alteracoes)
+        resultado["inseridos"] = len(novos)
+        resultado["mantidos"] = len(esperados) - len(alteracoes) - len(novos)
+    return resultado
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=DEFAULT_CSV)
-    parser.add_argument("--resumo", type=Path, default=DEFAULT_SUMMARY)
+    parser.add_argument("--input", type=Path)
+    parser.add_argument("--resumo", type=Path)
+    parser.add_argument("--municipios", action="store_true", help="Confere ou atualiza somente o cadastro nominal IBGE.")
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP)
     parser.add_argument("--aplicar", action="store_true", help="Sincroniza o banco configurado em DATABASE_URL.")
     args = parser.parse_args(argv)
     try:
-        fonte = carregar_fonte(args.input, args.resumo)
-        print(f"Fonte validada: {len(fonte.registros)} linhas; "
-              f"{sum(r['quantidade_casos'] for r in fonte.registros)} registros; anos {fonte.anos}.")
+        if args.municipios:
+            fonte = carregar_cadastro(
+                args.input or DEFAULT_CADASTRO_CSV, args.resumo or DEFAULT_CADASTRO_SUMMARY,
+            )
+            print(f"Cadastro nominal validado: {len(fonte)} municípios; população preservada.")
+        else:
+            fonte = carregar_fonte(args.input or DEFAULT_CSV, args.resumo or DEFAULT_SUMMARY)
+            print(f"Fonte validada: {len(fonte.registros)} linhas; "
+                  f"{sum(r['quantidade_casos'] for r in fonte.registros)} registros; anos {fonte.anos}.")
         if not args.aplicar:
             print("Conferência concluída. Para sincronizar o banco, execute com --aplicar.")
             return 0
-        result = sincronizar_casos(get_engine(), fonte, backup_dir=args.backup_dir)
+        sincronizar = sincronizar_municipios if args.municipios else sincronizar_casos
+        result = sincronizar(get_engine(), fonte, backup_dir=args.backup_dir)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (ValueError, OSError, DatabaseConfigurationError) as exc:

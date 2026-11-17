@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+/env
 
 # Dados originais, saídas do ETL e backups locais
 /arquivos-proj-int-iv.zip

@@ -71,14 +71,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 2)
         self.assertEqual(set(response.json()[0]), {
-            "id", "codigo_ibge", "ano", "semana_epidemiologica", "quantidade_casos",
+            "id", "codigo_ibge", "ano", "semana_epidemiologica", "quantidade_casos", "nome_municipio",
         })
+        self.assertEqual(response.json()[0]["nome_municipio"], "Vila Velha")
+        self.assertEqual(response.json()[1]["nome_municipio"], "Vitória")
 
     def test_filtro_combina_municipio_ano_e_semana(self):
         response = self.client.get("/casos?ano=2025&codigo_municipio=320530&semana=53")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
         self.assertEqual(response.json()[0]["quantidade_casos"], 7)
+        self.assertEqual(response.json()[0]["nome_municipio"], "Vitória")
         self.assertEqual(self.client.get("/casos?ano=2023").json(), [])
 
     def test_filtros_invalidos_retornam_422(self):

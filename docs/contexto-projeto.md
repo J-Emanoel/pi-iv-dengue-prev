@@ -4,6 +4,10 @@ Diretrizes recebidas em 25/10/2026 para o Projeto Integrador IV. O produto
 será uma aplicação web acadêmica para explorar dados de dengue dos municípios
 do Espírito Santo e apresentar tendências estimadas.
 
+Situação atual do cronograma: C1 e C2 já foram entregues. O objetivo é a
+entrega final completa e funcional no fim de novembro de 2026. A sequência
+abaixo organiza o trabalho técnico restante até essa entrega.
+
 ## Sequência de desenvolvimento
 
 1. Estrutura do repositório.
@@ -61,6 +65,160 @@ documentos oficiais, separado da previsão.
 Os resultados serão apresentados como estimativa do modelo, tendência
 estimada ou nível de atenção estimado. A aplicação não oferece diagnóstico
 nem alertas oficiais de saúde.
+
+## Checklist da entrega final
+
+O desenvolvimento segue para a entrega final, conforme a orientação recebida.
+O cadastro nominal IBGE foi implementado e aplicado no Supabase com backup;
+as próximas integrações da base são população anual e clima INMET.
+
+- [x] C1 e C2 entregues.
+- [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
+- [x] Cadastro IBGE com 78 nomes reais, correspondência de códigos e nomes na API/Streamlit.
+- [ ] População por município/ano, definição do indicador e validação da cobertura.
+- [ ] Clima INMET e associação entre municípios e estações.
+- [ ] Base analítica integrada e consultas de indicadores no backend.
+- [ ] ML avaliado e previsões disponíveis pela API.
+- [ ] LLM com function calling e RAG fundamentado em documentos.
+- [ ] Interface React/Vite integrada e aplicação publicada e testada.
+
+### O que já funciona
+
+- ZIP original preservado, com inventário e hashes; dados grandes fora do Git.
+- ETL SINAN por município de residência e ano/semana epidemiológica.
+- PostgreSQL no Supabase com 78 municípios, 11.679 linhas agregadas e 362.712
+  registros, conferidos contra a fonte corrigida; chave única sem duplicações.
+- Carga com validação, backup, transação e repetição sem duplicar registros.
+- API FastAPI com `/health`, `/municipios` e `/casos`, incluindo filtros.
+- Cadastro IBGE com os 78 nomes oficiais; `/casos` inclui `nome_municipio`.
+- Streamlit consumindo a API e testes automatizados da inspeção, ETL, carga e API.
+- Credenciais locais em `.env`, ignoradas pelo Git; exemplo fictício versionado.
+
+### O que falta
+
+| Etapa | Entrega | Condição para considerar concluída |
+| --- | --- | --- |
+| 1. Cadastro municipal — concluído | Nomes IBGE, correspondência de códigos e exibição na API/Streamlit. | 78 nomes reais, correspondência completa e contagens/IDs SINAN preservados no Supabase. |
+| 2. Indicadores e população | Definição do numerador, avaliação da cobertura e população por município/ano. | Fontes e referências temporais documentadas; indicador validado com exemplos. |
+| 3. Clima INMET | ETL meteorológico, qualidade dos sensores e vínculo município/estação. | Agregados semanais e cobertura verificáveis; nenhuma associação presumida pelo nome. |
+| 4. Base analítica e backend | Integração semanal, migrações SQL e consultas de indicadores/clima. | Chaves únicas, junções sem multiplicar linhas e ausência diferenciada de zero. |
+| 5. Machine Learning | Previsão de referência, comparação de modelos e serviço de previsões. | Avaliação temporal, métricas e limitações publicadas; modelo comparado à referência. |
+| 6. LLM/function calling | Assistente consultando funções reais do backend. | Respostas conferidas contra resultados das funções, com parâmetros validados. |
+| 7. RAG | Consulta a documentos oficiais com recuperação de trechos e referências. | Fontes rastreáveis e avaliação de respostas fundamentadas. |
+| 8. Interface web e publicação | React/Vite em `frontend/`, integração e publicação dos serviços. | Fluxo completo testado no ambiente publicado, com configuração documentada. |
+
+Cada etapa será implementada e verificada antes da seguinte. A etapa 2 define
+o significado dos indicadores e as restrições de cobertura antes do treinamento.
+O banco já está na nuvem; a publicação da API e da interface ainda faz parte
+da entrega final. A interface definitiva permanece para depois da parte
+funcional e dos recursos de IA, conforme solicitado.
+
+### Cadastro municipal: implementação e critérios
+
+**Objetivo:** substituir os rótulos `ES - código` por nomes reais e permitir
+consultas e filtros legíveis, preservando os identificadores e os agregados.
+Entrega concluída e conferida no Supabase. O procedimento implementado é:
+
+1. Ler o CSV IBGE diretamente do ZIP existente, sem modificar os originais.
+   Separar título, cabeçalho, 78 linhas municipais e notas finais. Decodificar
+   entidades HTML e preservar acentos dos nomes.
+2. Gerar uma correspondência explícita entre o código usado no SINAN/banco,
+   de seis dígitos, e o código IBGE completo, de sete dígitos. Validar prefixo
+   do ES, unicidade, nomes preenchidos e cobertura dos 78 códigos existentes.
+   A correspondência não será feita por semelhança de nomes.
+3. Gerar cadastro e resumo de validação em `data/processed/`, ignorados pelo
+   Git, registrando os hashes da origem e da saída. A presença de códigos sem
+   correspondência ou colisões deve interromper a carga.
+4. Acrescentar a carga cadastral ao carregador existente, com conferência antes
+   de aplicar. Atualizar somente `municipios.nome` nesta etapa, usando backup
+   dos municípios e transação. Preservar os códigos atuais, as chaves estrangeiras,
+   a população existente e todas as linhas de `casos_dengue`.
+5. Manter `/municipios` e acrescentar `nome_municipio` à resposta de `/casos`
+   por uma junção SQL, preservando os campos e filtros atuais. O nome permanece
+   armazenado em `municipios`, sem cópia física em cada linha de casos.
+6. Ajustar filtros, rótulos dos gráficos e exportação do Streamlit para mostrar
+   os nomes. O código continua sendo a chave de filtro e agrupamento. Esta
+   alteração não inclui redesenho visual nem criação do frontend React.
+7. Validar localmente, aplicar no Supabase com backup, conferir o resultado
+   e atualizar o README.
+
+Os códigos completos do IBGE são compostos por sete dígitos; a correspondência
+com os códigos de seis dígitos foi observada no pacote recebido e será validada
+na carga. Não haverá troca das chaves atuais nesta primeira etapa.
+[Referência do IBGE](https://www.ibge.gov.br/explica/codigos-dos-municipios.php).
+
+**Arquivos da entrega:** `pipelines/etl_ibge.py` e seu teste em
+`tests/test_etl_ibge.py`; alterações em `backend/povoar_banco.py`,
+`backend/main.py`, `backend/schemas.py`, `app.py`, testes existentes e README.
+O campo `nome` já existe; essa entrega não exige alterar o esquema SQL.
+
+**Verificações de aceite:**
+
+- 78 códigos distintos, com 78 nomes da fonte IBGE e nenhuma correspondência
+  faltante ou ambígua.
+- Permanência das 11.679 linhas e dos 362.712 registros da base atual;
+  comparação por chave e quantidade, preservando também os IDs existentes.
+- Backup dos municípios antes da atualização, rollback em falha e repetição
+  da carga sem novas alterações quando a fonte for igual.
+- API retornando os nomes junto dos campos atuais, com os filtros preservados.
+- Streamlit exibindo nomes nos filtros, gráficos e exportação sem mudar o
+  resultado das contagens.
+- ZIP e credenciais preservados e ausentes do versionamento.
+
+### Decisões e dependências das etapas seguintes
+
+**Indicadores e cobertura:** a contagem atual inclui todas as classificações
+da fonte. Definir se o alvo final representa registros notificados, casos
+prováveis ou confirmados e avaliar a cobertura SINAN/e-SUS VS no ES. A igualdade
+com o CSV comprova a carga, mas não resolve a representatividade da fonte.
+Documentar o período utilizável, o caráter parcial de 2026 e as lacunas antes
+de tratar ausência como zero ou iniciar a comparação de modelos.
+
+**População:** o CSV recebido contém Censo 2022 e uma coluna estimada com
+divergência entre o ano do cabeçalho e as notas. Os nomes podem ser aproveitados
+independentemente desse problema. Para indicadores históricos, obter e validar
+população por município, ano, fonte e data de referência. O campo único
+`municipios.populacao` não representa essa série. Planejar uma tabela anual e
+sua migração SQL antes de calcular taxas; a etapa 1 mantém a população como está.
+[Estimativas municipais do IBGE](https://www.ibge.gov.br/estatisticas/sociais/populacao/9103-estimativas-de-populacao.html).
+
+**Clima:** processar as séries das estações INMET, preservar horários UTC e
+definir o fuso da agregação semanal. Acompanhar horas válidas de precipitação,
+temperatura e umidade; uma semana sem valores permanece ausente. Definir a
+associação das 13 estações aos 78 municípios com referência geográfica e
+qualidade dos dados. O pacote não contém clima de 2026: obter essa fonte ou
+delimitar o período comum, sem inventar valores.
+
+**Base analítica e banco:** integrar calendário epidemiológico, contagens,
+população anual, clima e indicadores de cobertura. Versionar DDL e migrações
+quando surgirem tabelas ou mudanças de estrutura, pois `create_all()` não
+atualiza tabelas existentes. Acrescentar endpoints conforme os dados e cálculos
+ficarem disponíveis, com respostas e filtros validados.
+
+**ML:** definir o alvo e o horizonte de uma ou duas semanas. Comparar uma
+referência simples, como o último valor observado, com os modelos previstos no
+planejamento. Separar treino e avaliação por datas, com cortes comuns aos
+municípios; preparar variáveis e transformações sem usar dados futuros.
+Registrar MAE/RMSE, período, versão dos dados e limitações. Publicar previsões
+pela API somente depois dessa avaliação.
+
+**LLM e RAG:** conectar o assistente aos serviços implementados para consultar
+histórico, indicadores e previsões. Cálculos permanecem no backend; a LLM
+explica resultados. Na etapa RAG, selecionar documentos oficiais, preparar a
+recuperação e apresentar referências. Avaliar separadamente respostas de
+consulta de dados e respostas fundamentadas em documentos.
+
+**Interface e publicação:** criar a interface React/Vite com ferramentas
+Node.js, consumindo a API Python. Integrar histórico, indicadores, previsões e
+assistente, e depois validar a publicação da API e da interface com o banco
+compartilhado. Credenciais e chaves dos provedores permanecem no backend.
+
+### Continuidade até a entrega final
+
+A prioridade atual é completar a base: população anual, avaliação da cobertura,
+clima e consolidação semanal. As decisões metodológicas dessas fontes precedem
+o treinamento. Em seguida, completar ML, assistente, RAG, interface e publicação.
+O progresso de cada entrega será conferido contra o checklist acima.
 
 ## Acompanhar a implementação
 
