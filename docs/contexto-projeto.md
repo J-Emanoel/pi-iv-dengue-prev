@@ -62,16 +62,13 @@ Os resultados serão apresentados como estimativa do modelo, tendência
 estimada ou nível de atenção estimado. A aplicação não oferece diagnóstico
 nem alertas oficiais de saúde.
 
-## Primeiro incremento de código
+## Acompanhar a implementação
 
-A inspeção pontual já realizada passa a ter uma ferramenta reproduzível em
-`scripts/inspect_datasets.py`, com instruções no README principal e testes.
-As pastas locais são `data/raw/`, `data/interim/` e `data/processed/`.
-
-O scaffold de API, `/health`, frontend e PostgreSQL descritos no material de
-contexto serão implementados nas etapas correspondentes da sequência acima.
-Configuração por ambiente e testes acompanharão cada componente.
+O estado atual, o papel dos arquivos e os comandos de execução ficam no
+[README principal](../README.md). Este documento concentra o planejamento
+e as decisões que orientam as próximas etapas.
 
 Código, documentação e inventários são versionados. Datasets grandes,
 artefatos de modelos, senhas e chaves ficam fora dos commits. O compartilhamento
-por Releases ainda aguarda publicação; Git LFS não será usado inicialmente.
+dos originais será feito por Releases, conforme o README principal; Git LFS
+não será usado inicialmente.

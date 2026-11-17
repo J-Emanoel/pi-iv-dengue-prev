@@ -277,7 +277,10 @@ def nonnegative_integer(value: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("paths", nargs="*", type=Path, help="CSVs, ZIPs ou diretórios; padrão: data/raw.")
+    parser.add_argument(
+        "paths", nargs="*", type=Path,
+        help="CSVs, ZIPs ou diretórios; padrão: arquivos-proj-int-iv.zip na raiz.",
+    )
     parser.add_argument("--source", choices=("all", "sinan", "inmet", "ibge", "unknown"), default="all")
     parser.add_argument("--inmet-state", type=str.upper, help="UF das estações INMET, por exemplo ES. Não filtra o SINAN.")
     parser.add_argument("--sample-rows", type=nonnegative_integer, default=3)
@@ -288,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--inmet-state deve ter duas letras.")
     if args.output and args.output.suffix.lower() != ".json":
         parser.error("--output deve terminar em .json para preservar os CSVs e ZIPs.")
-    paths = args.paths or [PROJECT_ROOT / "data" / "raw"]
+    paths = args.paths or [PROJECT_ROOT / "arquivos-proj-int-iv.zip"]
     report = inspect_paths(
         paths, sample_rows=args.sample_rows, count_rows=args.count_rows,
         source_filter=args.source, inmet_state=args.inmet_state,

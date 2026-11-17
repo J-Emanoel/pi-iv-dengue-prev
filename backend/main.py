@@ -1,30 +1,56 @@
-from fastapi import FastAPI, Depends
+"""Rotas HTTP: recebem filtros e devolvem os agregados consultados no banco."""
+
+from fastapi import Depends, FastAPI, Query
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-import models
-from database import engine, get_db
 
-# Inicializa o FastAPI
-app = FastAPI(
-    title="API DenguePrev - ES",
-    description="API para fornecimento de dados epidemiológicos e climáticos",
-    version="1.0.0"
-)
+from backend.database import DatabaseConfigurationError, get_db
+from backend.models import CasoDengue, Municipio
+from backend.schemas import CasoResponse, MunicipioResponse
 
-# Rota 1: Raiz (Apenas para testar se está online)
+app = FastAPI(title="API DenguePrev - ES", version="0.2.0")
+
+
+@app.exception_handler(DatabaseConfigurationError)
+def configuration_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(SQLAlchemyError)
+def database_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Banco indisponível ou esquema não preparado."})
+
+
 @app.get("/")
 def home():
-    return {"mensagem": "Bem-vindo à API do DenguePrev! O servidor está a correr perfeitamente."}
+    return {"mensagem": "Bem-vindo à API do DenguePrev!"}
 
-# Rota 2: Buscar todos os municípios gravados no banco
-@app.get("/municipios")
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "DenguePrev API"}
+
+
+@app.get("/municipios", response_model=list[MunicipioResponse])
 def listar_municipios(db: Session = Depends(get_db)):
-    # Faz uma query à tabela de Municípios no Supabase
-    municipios = db.query(models.Municipio).all()
-    return municipios
+    return db.query(Municipio).order_by(Municipio.codigo_ibge).all()
 
-# Rota 3: Buscar o histórico de casos de dengue
-@app.get("/casos")
-def listar_casos(db: Session = Depends(get_db)):
-    # Faz uma query à tabela de Casos no Supabase
-    casos = db.query(models.CasoDengue).all()
-    return casos
+
+@app.get("/casos", response_model=list[CasoResponse])
+def listar_casos(
+    ano: int | None = Query(default=None, ge=1900, le=9998),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    semana: int | None = Query(default=None, ge=1, le=53),
+    db: Session = Depends(get_db),
+):
+    query = db.query(CasoDengue)
+    if ano is not None:
+        query = query.filter(CasoDengue.ano == ano)
+    if codigo_municipio is not None:
+        query = query.filter(CasoDengue.codigo_ibge == codigo_municipio)
+    if semana is not None:
+        query = query.filter(CasoDengue.semana_epidemiologica == semana)
+    return query.order_by(
+        CasoDengue.ano, CasoDengue.semana_epidemiologica, CasoDengue.codigo_ibge
+    ).all()

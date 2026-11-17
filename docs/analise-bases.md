@@ -1,5 +1,9 @@
 # Análise das bases do DenguePrev
 
+Este documento registra a análise inicial das fontes. Para os critérios do ETL
+implementado, os totais corrigidos e o ponto atual do desenvolvimento, consulte
+o [README principal](../README.md).
+
 Análise realizada em 24/10/2026 sobre `arquivos-proj-int-iv.zip`. A proposta é tecnicamente executável, mas a cobertura epidemiológica do Espírito Santo precisa ser validada antes do treinamento. Este documento registra observações e propostas; não define a fonte final nem publica bases no GitHub.
 
 O pacote tem 956.346.013 bytes (912,04 MiB), contém 13 ZIPs e um CSV avulso e reúne 3.478 CSVs. O conteúdo final ocuparia 6.300.884.379 bytes (5,87 GiB) descompactado. SHA-256 do pacote: `fdfeabaa760343234ee0ebcfe1bdaebe6c69766a851858907967c0e900b5d26c`.

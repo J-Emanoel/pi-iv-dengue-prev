@@ -1,181 +1,181 @@
-import zipfile
-import io
-import json
-import argparse
-import gc
-import pandas as pd
-from pathlib import Path
-from datetime import datetime, timezone
+"""Gera o histórico de registros SINAN por residência e semana epidemiológica."""
 
-ANOS_PADRAO = [2020, 2021, 2022, 2023, 2024, 2025, 2026]
+import argparse
+import csv
+import json
+import shutil
+import sys
+import tempfile
+import warnings
+import zipfile
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pandas as pd
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from pipelines.arquivos import sha256_arquivo
+from pipelines.calendario import ano_semana_epidemiologica
+
+ROOT = Path(__file__).resolve().parents[1]
+ANOS_PADRAO = list(range(2020, 2027))
+OUTPUT_CSV = ROOT / "data/processed/dengue_semanal.csv"
+OUTPUT_JSON = ROOT / "data/processed/dengue_semanal_resumo.json"
+COLUNAS = {"SG_UF", "ID_MN_RESI", "DT_SIN_PRI", "DT_NOTIFIC", "SEM_PRI"}
+
+
+def normalizar_codigo(values):
+    return values.str.strip().str.replace(r"\.0+$", "", regex=True)
+
+
+def agregar_bloco(frame, anos):
+    """Não remove linhas de pessoas iguais: a fonte não tem chave individual."""
+    missing = COLUNAS - set(frame.columns)
+    if missing:
+        raise ValueError(f"Colunas obrigatórias ausentes: {sorted(missing)}")
+    metrics = Counter(linhas_bruto=len(frame))
+    resident = normalizar_codigo(frame["SG_UF"]).eq("32")
+    es = frame.loc[resident].copy()
+    metrics["linhas_residentes_es"] = len(es)
+    codes = normalizar_codigo(es["ID_MN_RESI"])
+    valid_code = codes.str.fullmatch(r"32\d{4}")
+    metrics["municipio_invalido"] = int((~valid_code).sum())
+    es = es.loc[valid_code].copy()
+    es["codigo"] = codes.loc[valid_code]
+    symptoms = pd.to_datetime(es["DT_SIN_PRI"], format="%Y-%m-%d", errors="coerce")
+    notification = pd.to_datetime(es["DT_NOTIFIC"], format="%Y-%m-%d", errors="coerce")
+    valid_date = symptoms.notna() & notification.notna() & symptoms.le(notification)
+    metrics["data_invalida_ou_sintomas_apos_notificacao"] = int((~valid_date).sum())
+    es = es.loc[valid_date].copy()
+    periods = symptoms.loc[valid_date].map(lambda d: ano_semana_epidemiologica(d.date()))
+    es["ano"] = periods.map(lambda p: p[0])
+    es["semana"] = periods.map(lambda p: p[1])
+    calculated = periods.map(lambda p: f"{p[0]}{p[1]:02d}")
+    metrics["semana_origem_divergente"] = int(es["SEM_PRI"].ne(calculated).sum())
+    in_period = es["ano"].isin(anos)
+    metrics["fora_periodo_epidemiologico"] = int((~in_period).sum())
+    es = es.loc[in_period]
+    metrics["linhas_agregadas"] = len(es)
+    totals = Counter({
+        (str(code), int(year), int(week)): int(count)
+        for (code, year, week), count in es.groupby(["codigo", "ano", "semana"]).size().items()
+    })
+    return totals, metrics
+
 
 def localizar_zip_anual(nomes, ano):
-    sufixo = str(ano)[-2:]
-    for nome in nomes:
-        if f"DENGBR{sufixo}" in nome.upper() and nome.endswith('.zip'):
-            return nome
-    return None
+    expected = f"DENGBR{str(ano)[-2:]}.CSV.ZIP"
+    matches = [n for n in nomes if Path(n).name.upper() == expected]
+    if len(matches) != 1:
+        raise ValueError(f"Esperado um pacote {expected}; encontrados {len(matches)}.")
+    return matches[0]
 
-def escolher_csv_interno(zip_anual):
-    for nome in zip_anual.namelist():
-        if nome.lower().endswith('.csv'):
-            return nome
-    return zip_anual.namelist()[0]
 
-def ler_e_filtrar_es_em_blocos(conteudo_csv):
-    """Lê o CSV em blocos de 100k linhas, filtrando o ES instantaneamente para poupar RAM."""
-    try:
-        df_teste = pd.read_csv(io.BytesIO(conteudo_csv), sep=';', encoding='latin1', nrows=5)
-        sep = ';' if len(df_teste.columns) > 1 else ','
-    except Exception:
-        sep = ';'
-
-    chunks_es = []
-    total_linhas_bruto = 0
-
-    # Ler em blocos para evitar congelar o PC
-    for chunk in pd.read_csv(
-        io.BytesIO(conteudo_csv), 
-        sep=sep, 
-        encoding='latin1', 
-        on_bad_lines='skip',
-        engine='python',
-        chunksize=100000
-    ):
-        total_linhas_bruto += len(chunk)
-        chunk.columns = [str(c).strip().replace('\ufeff', '').replace('\r', '').replace('"', '') for c in chunk.columns]
-        
-        col_uf = next((c for c in chunk.columns if c.upper() in ['SG_UF_NOT', 'UF_NOT']), None)
-        if col_uf:
-            # Filtrar imediatamente o Espírito Santo (32) neste bloco
-            df_es_chunk = chunk[chunk[col_uf].astype(str).str.contains('32', na=False)]
-            if not df_es_chunk.empty:
-                chunks_es.append(df_es_chunk)
-
-    if chunks_es:
-        df_es = pd.concat(chunks_es, ignore_index=True)
-    else:
-        df_es = pd.DataFrame()
-
-    return df_es, total_linhas_bruto
-
-def agregar_arquivo(df_es, ano, nome_interno, total_linhas_bruto):
-    col_mun = None
-    for cand in ['ID_MN_RESI', 'ID_MUNICIP', 'MUNICIPIO']:
-        if cand in df_es.columns:
-            col_mun = cand
-            break
-            
-    col_sem = None
-    for cand in ['SEM_PRI', 'SEM_NOT']:
-        if cand in df_es.columns:
-            col_sem = cand
-            break
-
-    resumo = {
-        "ano_arquivo": ano,
-        "arquivo": nome_interno,
-        "status": "processado",
-        "linhas_bruto": total_linhas_bruto,
-        "linhas_es": len(df_es)
-    }
-
-    if df_es.empty or not col_mun or not col_sem:
-        resumo["status"] = "erro_colunas_ou_vazio"
-        return pd.DataFrame(), resumo
-
-    df_es['codigo_municipio'] = pd.to_numeric(df_es[col_mun], errors='coerce')
-    df_es['semana_epidemiologica'] = pd.to_numeric(df_es[col_sem], errors='coerce')
-    df_es = df_es.dropna(subset=['codigo_municipio', 'semana_epidemiologica'])
-
-    agrupado = df_es.groupby(['codigo_municipio', 'semana_epidemiologica'], as_index=False).size()
-    agrupado.rename(columns={'size': 'registos'}, inplace=True)
-    agrupado['ano_arquivo'] = ano
-    agrupado['arquivo_origem'] = nome_interno
-
-    return agrupado, resumo
-
-def processar_pacote(zip_path: Path, anos: list, output_csv: Path, output_json: Path):
-    print(f"A abrir o pacote principal de dados: {zip_path}")
-    partes = []
-    resumos = []
-
-    with zipfile.ZipFile(zip_path, 'r') as pacote:
-        nomes = pacote.namelist()
-
-        for ano in anos:
-            nome_interno = localizar_zip_anual(nomes, ano)
-            if not nome_interno:
-                print(f"AVISO: não encontrei o ZIP para o ano {ano}; a saltar.")
-                resumos.append({"ano_arquivo": ano, "arquivo": None, "status": "ausente"})
-                continue
-
-            print(f"\nA processar blocos de {ano}: {nome_interno}")
-            bytes_zip_anual = pacote.read(nome_interno)
-
-            with zipfile.ZipFile(io.BytesIO(bytes_zip_anual), "r") as zip_anual:
-                nome_csv = escolher_csv_interno(zip_anual)
-                conteudo_csv = zip_anual.read(nome_csv)
-                
-                # Executar leitura em blocos e filtro imediato
-                df_es, total_bruto = ler_e_filtrar_es_em_blocos(conteudo_csv)
-
-            agrupado, resumo = agregar_arquivo(df_es, ano, nome_interno, total_bruto)
-            resumo["csv_interno"] = nome_csv
-            resumos.append(resumo)
-
-            if not agrupado.empty:
-                partes.append(agrupado)
-
-            # Limpar memória agressivamente após cada ano
-            del df_es, conteudo_csv, bytes_zip_anual
-            gc.collect()
-
+def processar_pacote(zip_path, anos, output_csv, output_json, *, chunksize=50000):
+    zip_path, output_csv, output_json = map(Path, (zip_path, output_csv, output_json))
+    anos = sorted(set(anos))
+    if not anos or any(y < 1900 or y > 9998 for y in anos):
+        raise ValueError("Informe anos válidos para o período de análise.")
+    if set(anos) != set(range(min(anos), max(anos) + 1)):
+        raise ValueError("O período de análise deve ter anos consecutivos.")
+    if len({output_csv.resolve(), output_json.resolve(), zip_path.resolve()}) != 3:
+        raise ValueError("Entrada, CSV e resumo precisam ter caminhos diferentes.")
+    totals, overall, files = Counter(), Counter(), []
+    source_hash = sha256_arquivo(zip_path)
+    with zipfile.ZipFile(zip_path) as outer:
+        packages = [(year, localizar_zip_anual(outer.namelist(), year)) for year in anos]
+        for year, name in packages:
+            metrics = Counter()
+            print(f"Processando {name} em blocos...", flush=True)
+            # Somente o ZIP comprimido usa spool; o CSV é lido diretamente em fluxo.
+            with tempfile.SpooledTemporaryFile(max_size=8 * 1024**2) as spool:
+                with outer.open(name) as source:
+                    shutil.copyfileobj(source, spool, length=1024**2)
+                spool.seek(0)
+                with zipfile.ZipFile(spool) as inner:
+                    candidates = [n for n in inner.namelist() if n.lower().endswith(".csv")]
+                    if len(candidates) != 1:
+                        raise ValueError(f"{name}: esperado exatamente um CSV.")
+                    with inner.open(candidates[0]) as source, warnings.catch_warnings():
+                        warnings.simplefilter("error", pd.errors.ParserWarning)
+                        chunks = pd.read_csv(
+                            source, sep=",", encoding="utf-8-sig", dtype=str,
+                            keep_default_na=False, chunksize=chunksize,
+                            on_bad_lines="error", index_col=False,
+                        )
+                        for frame in chunks:
+                            grouped, current = agregar_bloco(frame, anos)
+                            totals.update(grouped)
+                            metrics.update(current)
+            files.append({"ano_arquivo": year, "arquivo": name, **dict(metrics)})
+            overall.update(metrics)
+    if not totals:
+        raise ValueError("Nenhum registro válido no período. As saídas anteriores foram preservadas.")
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     output_json.parent.mkdir(parents=True, exist_ok=True)
+    # O checksum no resumo impede carregar um par CSV/JSON de execuções diferentes.
+    temporary_csv = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="", suffix=".tmp",
+            dir=output_csv.parent, delete=False,
+        ) as target:
+            temporary_csv = Path(target.name)
+            writer = csv.writer(target)
+            writer.writerow(["codigo_municipio", "ano_epidemiologico", "semana_epidemiologica", "registos"])
+            writer.writerows((*key, value) for key, value in sorted(totals.items()))
+        csv_hash = sha256_arquivo(temporary_csv)
+        document = {
+            "schema_version": 2,
+            "projeto": "DenguePrev",
+            "gerado_em_utc": datetime.now(timezone.utc).isoformat(),
+            "criterio": "registros_notificados",
+            "localidade": "residencia",
+            "data_referencia": "DT_SIN_PRI",
+            "anos_epidemiologicos": anos,
+            "arquivo_entrada": zip_path.name,
+            "entrada_sha256": source_hash,
+            "csv_sha256": csv_hash,
+            "linhas_saida": len(totals),
+            "total_registos": sum(totals.values()),
+            "contadores": dict(overall),
+            "arquivos": files,
+            "observacoes": [
+                "Contagens de registros da fonte, incluindo todas as classificações.",
+                "Ausência de linha não foi convertida em zero.",
+                "Datas fora dos anos epidemiológicos solicitados não entram no agregado.",
+                "A cobertura do SINAN no ES ainda exige conciliação com a fonte estadual.",
+            ],
+        }
+        temporary_csv.replace(output_csv)
+        output_json.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    finally:
+        if temporary_csv is not None:
+            temporary_csv.unlink(missing_ok=True)
+    print(f"Concluído: {len(totals)} linhas; {sum(totals.values())} registros.")
+    print(f"CSV: {output_csv}\nResumo: {output_json}")
+    return document
 
-    if partes:
-        final = pd.concat(partes, ignore_index=True)
-        final = final.sort_values(
-            ["ano_arquivo", "codigo_municipio", "semana_epidemiologica"],
-            kind="stable",
-            na_position="last",
-        )
-        final.to_csv(output_csv, index=False, encoding="utf-8-sig")
-        print(f"\n[SUCESSO] Consolidado guardado em: {output_csv}")
-        print(f"Total de linhas agregadas: {len(final):,}")
-    else:
-        print("\nAVISO: não houve dados agregados.")
-
-    documento = {
-        "projeto": "DenguePrev",
-        "etapa": "ETL inicial SINAN",
-        "gerado_em_utc": datetime.now(timezone.utc).isoformat(),
-        "arquivo_entrada": str(zip_path),
-        "arquivo_saida_csv": str(output_csv),
-        "anos_solicitados": anos,
-        "arquivos": resumos,
-    }
-
-    with output_json.open("w", encoding="utf-8") as f:
-        json.dump(documento, f, ensure_ascii=False, indent=2)
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default="arquivos-proj-int-iv.zip")
-    parser.add_argument("--years", nargs="+", type=int, default=ANOS_PADRAO)
-    parser.add_argument("--output-csv", default="data/interim/sinan_es_municipio_semana.csv")
-    parser.add_argument("--output-json", default="data/interim/sinan_es_resumo.json")
-    return parser.parse_args()
 
 def main():
-    args = parse_args()
-    processar_pacote(
-        zip_path=Path(args.input),
-        anos=args.years,
-        output_csv=Path(args.output_csv),
-        output_json=Path(args.output_json),
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, default=ROOT / "arquivos-proj-int-iv.zip")
+    parser.add_argument("--years", nargs="+", type=int, default=ANOS_PADRAO)
+    parser.add_argument("--output-csv", type=Path, default=OUTPUT_CSV)
+    parser.add_argument("--output-json", type=Path, default=OUTPUT_JSON)
+    args = parser.parse_args()
+    try:
+        processar_pacote(args.input, args.years, args.output_csv, args.output_json)
+    except (OSError, ValueError, zipfile.BadZipFile, pd.errors.ParserError, pd.errors.ParserWarning) as exc:
+        print(f"Erro no ETL: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    raise SystemExit(main())

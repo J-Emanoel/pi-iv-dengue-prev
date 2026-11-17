@@ -3,12 +3,9 @@
 .env.*
 !.env.example
 
-# Datasets: keep documentation and folder markers
+# Dados originais, saídas do ETL e backups locais
 /arquivos-proj-int-iv.zip
-data/**
-!data/**/
-!data/**/*.md
-!data/**/.gitkeep
+/data/
 
 # Model artifacts
 ml/**/*.pkl
