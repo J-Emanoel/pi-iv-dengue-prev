@@ -80,8 +80,8 @@ O cadastro nominal IBGE foi implementado e aplicado no Supabase com backup;
 a população por município/ano, o clima INMET e a base analítica também foram
 integrados e conferidos. A comparação de fontes foi executada e encontrou uma
 série estadual adicional, adotada e carregada separadamente no Supabase.
-A próxima etapa é preparar as variáveis temporais e avaliar os modelos,
-respeitando os critérios de uso e limitações documentados.
+A primeira avaliação temporal foi executada. A próxima etapa é disponibilizar
+o serviço de previsões com estratégia, versão e limitações explícitas.
 
 - [x] C1 e C2 entregues.
 - [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
@@ -95,8 +95,8 @@ respeitando os critérios de uso e limitações documentados.
 - [x] Base analítica integrada no Supabase, calendário completo e consultas de indicadores/cobertura na API.
 - [x] Comparação reproduzível SINAN/SESA pela mesma data e diagnóstico de continuidade/clima.
 - [x] SESA por notificação em 2020–2024 adotada para o ML, importada com fonte/data/versões explícitas.
-- [ ] Preparação dos exemplos temporais, previsão de referência e comparação de modelos.
-- [ ] ML avaliado e previsões disponíveis pela API.
+- [x] Exemplos temporais preparados e primeira comparação de persistência, Random Forest e Gradient Boosting executada.
+- [ ] Serviço de previsões pela API, com fonte, estratégia selecionada e limitações.
 - [ ] LLM com function calling e RAG fundamentado em documentos.
 - [ ] Interface React/Vite integrada e aplicação publicada e testada.
 
@@ -132,7 +132,7 @@ respeitando os critérios de uso e limitações documentados.
 | 2. População e indicador descritivo concluídos | Registros da extração por 100 mil habitantes; alvo do ML definido como notificações estaduais. | Referências anuais preservadas; limitações de cobertura explícitas na avaliação. |
 | 3. Clima integrado; adequação pendente | ETL e vínculo geográfico implementados; falta definir critérios de uso dos sensores e das distâncias. | Cobertura verificável e limites de uso documentados antes do ML. |
 | 4. Base analítica e backend — concluído | Calendário semanal e visão integrada no Supabase; consultas de indicadores e presença das fontes. | 28.548 chaves únicas, contagens preservadas e ausência diferenciada de zero; conferido no PostgreSQL. |
-| 5. Machine Learning | Previsão de referência, comparação de modelos e serviço de previsões. | Avaliação temporal, métricas e limitações publicadas; modelo comparado à referência. |
+| 5. Machine Learning — primeira avaliação concluída | Persistência, Random Forest e Gradient Boosting comparados; falta serviço de previsões. | Resultado e limitações documentados; persistência selecionada nesta rodada. |
 | 6. LLM/function calling | Assistente consultando funções reais do backend. | Respostas conferidas contra resultados das funções, com parâmetros validados. |
 | 7. RAG | Consulta a documentos oficiais com recuperação de trechos e referências. | Fontes rastreáveis e avaliação de respostas fundamentadas. |
 | 8. Interface web e publicação | React/Vite em `frontend/`, integração e publicação dos serviços. | Fluxo completo testado no ambiente publicado, com configuração documentada. |
@@ -376,7 +376,8 @@ nessas semanas. A disponibilidade de clima no alvo futuro não participa da
 seleção. Esses totais medem viabilidade técnica, não desempenho de modelo.
 A seleção de alvos observados e sequências completas cria um recorte e pode
 favorecer períodos/municípios com mais notificações; as métricas precisam
-explicitar essa limitação. Nenhum modelo foi treinado nem publicado nesta etapa.
+explicitar essa limitação. O diagnóstico precedeu o treinamento; a primeira
+avaliação temporal já foi executada e está descrita abaixo.
 
 A série estadual foi carregada no Supabase em `notificacoes_sesa`, cuja
 estrutura é definida em `backend/models.py`. A referência temporal é
@@ -404,14 +405,35 @@ O relatório reproduzível fica em
 `data/processed/avaliacao_fontes_resumo.json`; a comparação mensal e a candidata
 semanal ficam ao lado dele.
 
-**ML — próxima implementação:** preparar o alvo de registros notificados SESA
-uma semana à frente e as quatro semanas anteriores, conforme os critérios
-acima. Comparar uma
-referência simples, como o último valor observado, com os modelos previstos no
-planejamento. Separar treino e avaliação por datas, com cortes comuns aos
-municípios; preparar variáveis e transformações sem usar dados futuros.
-Registrar MAE/RMSE, período, versão dos dados e limitações. Publicar previsões
-pela API somente depois dessa avaliação.
+**ML — primeira avaliação executada:** `ml/preparar_dados.py` extrai um snapshot
+somente de leitura e constrói 40 entradas com quatro semanas anteriores,
+médias, cobertura dos sensores, sazonalidade e identificação municipal. O
+preparo mantém o calendário e exige continuidade, preservando ausência e zero
+explícito. A população do alvo não é uma entrada do modelo.
+
+`ml/treinar.py` usa Scikit-learn para comparar persistência e duas configurações
+de cada família Random Forest/Gradient Boosting. As transformações são
+ajustadas dentro de pipelines, somente com a partição permitida. A escolha
+usa MAE em 2023 e RMSE como desempate; 2024 não seleciona hiperparâmetros.
+
+As coortes observadas confirmaram 1.795 exemplos de treino, 2.774 de validação
+e 2.449 de teste. A persistência foi selecionada com MAE 17,29 e RMSE 38,83 na
+validação, contra MAE a partir de 30,26 nos candidatos de árvores. No teste
+de 2024, teve MAE 20,45 e RMSE 51,40, em registros por município/semana elegível.
+Essa primeira rodada não demonstrou ganho sobre a referência simples.
+
+O snapshot e os exemplos têm hashes; o artefato local usa Joblib e guarda
+parâmetros, versões e resultados da avaliação. O carregamento e a reprodução
+offline foram conferidos. Nada foi escrito no PostgreSQL nesta etapa.
+Os dados e artefatos são ignorados pelo Git; a análise versionada fica em
+[avaliacao-ml.md](avaliacao-ml.md).
+
+Na estratégia selecionada, o clima delimita a amostra, mas a previsão repete
+a última contagem. Isso limita o uso para tendências e rankings de crescimento
+estimado. A apresentação e o serviço devem explicitar a estratégia efetiva.
+O teste de 2024 já foi consultado; novas hipóteses precisam de protocolo
+documentado, sem otimização sobre esse teste. O serviço de previsões ainda
+será implementado, antes da LLM/RAG e da interface definitiva.
 
 **LLM e RAG:** conectar o assistente aos serviços implementados para consultar
 histórico, indicadores e previsões. Cálculos permanecem no backend; a LLM
@@ -426,10 +448,10 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 
 ### Continuidade até a entrega final
 
-A prioridade atual é preparar os exemplos temporais e avaliar a previsão de
-referência e os modelos sobre a série estadual adotada. A interpretação deve
-respeitar lacunas, seleção de amostras e revisões históricas. Em seguida,
-completar serviço de previsões, assistente, RAG, interface e publicação.
+A prioridade atual é implementar o serviço de previsões usando a avaliação
+registrada e suas limitações. A interpretação deve respeitar lacunas, seleção
+de amostras e revisões históricas. Em seguida, completar assistente, RAG,
+interface e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
 
 ## Acompanhar a implementação

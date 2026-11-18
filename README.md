@@ -46,7 +46,13 @@ com a saída validada, e sua repetição resultou em zero alterações.
 O SINAN permanece como referência em suas tabelas, visão e rotas atuais.
 O Streamlit provisório continua exibindo esse histórico SINAN. A série estadual
 está disponível nas novas consultas `/base-sesa` e `/cobertura-sesa`.
-O próximo passo é preparar os exemplos temporais e treinar/avaliar os modelos.
+A primeira avaliação de ML foi executada: 1.795 exemplos de treino, 2.774 de
+validação e 2.449 de teste, com 40 variáveis. A persistência teve menor erro de
+validação que os quatro candidatos de Random Forest/Gradient Boosting. No
+teste de 2024, a estratégia selecionada teve MAE 20,45 e RMSE 51,40 registros
+por município/semana do recorte. O [relatório de avaliação](docs/avaliacao-ml.md)
+documenta os resultados, as limitações e a reprodução. Previsões ainda não
+estão disponíveis pela API; esse é o próximo serviço a implementar.
 As decisões ficam no [contexto do projeto](docs/contexto-projeto.md#comparação-de-fontes-e-proposta-para-o-ml).
 
 A conexão real fica somente no `.env` local, ignorado pelo Git. O
@@ -83,7 +89,8 @@ Ausência de registro não foi convertida em zero.
 | `backend/schemas.py` | Define o formato JSON das respostas da API. |
 | `app.py` | Dashboard provisório em Streamlit, que consulta a API. |
 | `frontend/` | Pasta reservada para a futura interface React/Vite. |
-| `ml/` | Pasta reservada para modelos e rotinas de machine learning. |
+| `ml/preparar_dados.py` | Congela a base SESA e cria lags, médias, sazonalidade e critérios de elegibilidade. |
+| `ml/treinar.py` | Compara persistência, Random Forest e Gradient Boosting e grava avaliação/artefato. |
 | `scripts/inspect_datasets.py` | Ferramenta auxiliar para inspecionar SINAN, INMET e IBGE. |
 | `tests/` | Testes da inspeção, do ETL, da carga e da API. |
 | `docs/` | Planejamento, análise inicial das fontes e inventário de arquivos. |
@@ -95,8 +102,9 @@ separadamente. `backend/__init__.py` identifica o pacote Python.
 A pasta `data/` contém apenas arquivos locais gerados, incluindo backups, e é
 criada conforme a execução. O ZIP, `data/`, `.env` e `.venv/` ficam fora dos
 commits. Os CSVs/JSONs do fluxo antigo foram removidos; o agregado atual é o de
-`data/processed/`. As pastas `frontend/` e `ml/` permanecem reservadas com um
-arquivo `.gitkeep`, pois o Git registra arquivos e não mantém pastas vazias.
+`data/processed/`. A pasta `frontend/` permanece reservada com `.gitkeep`.
+`ml/` agora contém as rotinas de preparação e treinamento; seus dados e
+artefatos gerados ficam ignorados pelo Git.
 
 ## Preparar o ambiente
 
@@ -490,7 +498,40 @@ frente, usando quatro semanas anteriores: treino em 2020–2022, validação em
 para os exemplos com clima, pelo menos 80% de horas válidas em cada variável
 das quatro semanas anteriores. O clima da semana futura não seleciona esses
 exemplos. O limiar é exploratório, e a seleção de semanas observadas precisa
-ser documentada ao interpretar as métricas. Nenhum modelo foi treinado nesta etapa.
+ser documentada ao interpretar as métricas. A comparação de fontes não treina
+modelos; o treinamento tem comandos próprios, descritos a seguir.
+
+## Preparar e avaliar o ML
+
+```powershell
+.venv\Scripts\python.exe -B -m ml.preparar_dados
+.venv\Scripts\python.exe -B -m ml.treinar
+```
+
+O primeiro comando consulta a visão estadual em transação somente de leitura.
+Gera `data/processed/ml/<dataset_id>/base_sesa.csv`, `exemplos.csv` e `resumo.json`.
+O identificador inclui os hashes do snapshot, dos exemplos e do protocolo.
+`data/processed/ml/atual.json` aponta para o dataset preparado mais recentemente.
+Para repetir sem conexão, use `ml.preparar_dados --input CAMINHO/base_sesa.csv`.
+
+O segundo comando confere os hashes, ajusta os candidatos em 2020–2022,
+seleciona por MAE/RMSE de 2023 e reajusta o escolhido em 2020–2023 para o teste
+final de 2024. Cada exemplo usa quatro semanas anteriores ao alvo, com lags
+por município e calendário consecutivo. O clima da semana futura não entra.
+População é metadado para normalização retrospectiva, fora das entradas do modelo.
+
+Cada execução grava `modelo.joblib`, `avaliacao.json`, `previsoes_validacao.csv`
+e `previsoes_teste.csv` em uma pasta própria sob `ml/models/`. O ponteiro
+`ml/models/atual.json` identifica a execução mais recente. Dados e artefatos
+permanecem fora do Git; o código, os testes e o relatório de avaliação são versionados.
+Somente artefatos locais de origem conhecida devem ser carregados.
+
+As bibliotecas usadas são Pandas, NumPy, Scikit-learn e Joblib, declaradas no
+único `requirements.txt`. Nesta rodada, a estratégia selecionada foi a
+persistência; ela repete a última contagem e não demonstrou antecipação de
+mudanças. Os resultados dos modelos de árvores permanecem registrados na
+avaliação. Consulte o [relatório completo](docs/avaliacao-ml.md) antes de interpretar
+as métricas como desempenho em todos os municípios ou períodos.
 
 ## Testes e próximos passos
 
@@ -503,9 +544,9 @@ consultas da API também foram verificadas diretamente no PostgreSQL da equipe.
 
 As bases SINAN e SESA estão integradas e conferidas no Supabase, com consultas
 próprias e sem mistura de contagens. A série adotada para o ML é a estadual por
-notificação em 2020–2024. A próxima etapa é preparar as variáveis temporais,
-comparar a previsão de referência com os modelos e avaliar os resultados.
-Depois seguem serviço de previsões, LLM com function calling e RAG.
+notificação em 2020–2024. A preparação e a primeira comparação temporal estão
+concluídas. A próxima etapa é o serviço de previsões com modelo, versão,
+origem e limitações explícitos. Depois seguem LLM com function calling e RAG.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).
