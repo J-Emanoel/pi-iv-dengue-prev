@@ -105,6 +105,8 @@ Ausência de registro não foi convertida em zero.
 | `backend/main.py` | Disponibiliza as consultas pela API FastAPI. |
 | `backend/schemas.py` | Define o formato JSON das respostas da API. |
 | `backend/previsoes.py` | Confere o experimento salvo e serve estimativas com datas, elegibilidade e limitações. |
+| `backend/ferramentas_ia.py` | Define consultas permitidas à LLM e valida argumentos, fontes, períodos e municípios. |
+| `backend/assistente.py` | Conecta a LLM via Groq ao function calling, trata erros e contabiliza uso. |
 | `app.py` | Dashboard provisório em Streamlit, que consulta a API. |
 | `frontend/` | Pasta reservada para a futura interface React/Vite. |
 | `ml/preparar_dados.py` | Congela a fonte selecionada e cria lags, médias, sazonalidade e critérios de elegibilidade. |
@@ -447,6 +449,8 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
   métricas de validação/teste e limitações.
 - `GET /previsoes`: estimativas de uma semana para os municípios, com filtros
   opcionais `data_inicio` (domingo do alvo) e `codigo_municipio`.
+- `GET /assistente/status`: configuração local do Groq, sem exibir a chave nem testar acesso ao provedor.
+- `POST /assistente`: pergunta em linguagem natural, fonte e histórico opcional; retorna explicação e consultas executadas.
 
 Exemplo: `/vinculos-estacoes?ano=2025&codigo_municipio=320530` retorna o vínculo
 de Vitória à estação A612, a aproximadamente 1,248 km do centroide municipal.
@@ -666,6 +670,114 @@ O serviço não consulta nem grava o PostgreSQL para gerar essas respostas.
 Cada integrante precisa reproduzir a preparação e o treinamento locais para
 usar as previsões. Os dados e modelos gerados continuam fora dos commits.
 
+## Assistente via Groq
+
+O backend implementa function calling local: envia as definições das funções ao
+Groq, recebe solicitações da LLM, valida os argumentos, executa consultas de
+leitura e devolve os resultados ao modelo para explicação. A chave fica no
+backend. A LLM não recebe conexão SQL nem executa comandos ou previsões próprias.
+
+As funções disponíveis resolvem municípios, consultam histórico, comparam cidades,
+identificam o modelo e consultam previsões. A comparação usa semanas observadas
+em comum e calcula totais/diferenças no backend, sem preencher lacunas com zero.
+As fontes permanecem separadas. O assistente usa SINAN por padrão; o campo
+`fonte` da solicitação permite selecionar SESA e cada consulta registra a fonte
+efetiva. As rotas anteriores de previsão mantêm seu padrão SESA.
+
+**Estado atual:** fluxo e ferramentas implementados, com testes simulados e
+primeiras respostas reais pelo GPT-OSS 120B no Groq. Estratégia/data do modelo,
+previsão de Vitória e comparação Vitória/Vila Velha foram conferidas contra
+os resultados do backend. Resultados, falhas e limites da avaliação ficam em
+[avaliacao-assistente.md](docs/avaliacao-assistente.md).
+
+Para configurar:
+
+1. Crie ou acesse sua conta no [console Groq](https://console.groq.com/).
+2. Confira no Playground o modelo e os limites disponíveis na conta. A configuração
+   adotada é `openai/gpt-oss-120b`, servido pelo Groq e com function calling.
+3. Crie a chave em [API Keys](https://console.groq.com/keys).
+4. Preencha somente o `.env` local e reinicie a API:
+
+```dotenv
+GROQ_API_KEY=SUA_CHAVE_GROQ
+GROQ_MODEL=openai/gpt-oss-120b
+```
+
+O modelo precisa estar habilitado na conta. A chave não deve ser enviada pelo
+chat nem copiada para `.env.example`. A configuração desta máquina foi atualizada
+preservando a chave e a conexão do banco; outros participantes usam suas próprias chaves.
+
+O planejamento original citava Llama. A documentação atual do Groq informa a
+[retirada de Llama 3.1/3.3 dos planos Free e Developer em 16/08/2026](https://console.groq.com/docs/deprecations).
+GPT-OSS mantém o provedor Groq e o fluxo de function calling descrito no material
+de apoio do professor; a mudança é na família do modelo de linguagem. Não há
+fallback automático. O código também admite GPT-OSS 20B e os dois IDs Llama
+legados, caso exista acesso Enterprise; os parâmetros específicos de reasoning
+são enviados apenas para GPT-OSS.
+
+Abra `/assistente/status`: `configuracao_local_completa` indica somente que os
+campos estão preenchidos no formato esperado. Não verifica chave válida, saldo,
+permissão, disponibilidade ou qualidade das respostas. Sem configuração,
+`POST /assistente` retorna 503 e as consultas existentes continuam funcionando.
+
+Em `http://127.0.0.1:8000/docs`, teste `POST /assistente` com:
+
+```json
+{
+  "pergunta": "Qual a estratégia do modelo SINAN e até quando vão os dados?",
+  "fonte": "sinan"
+}
+```
+
+A resposta contém `resposta`, `provedor`, `modelo_llm` e `consultas`. Cada consulta
+registra nome da ferramenta, argumentos, sucesso e resultado agregado. Isso
+permite conferir o texto contra os dados efetivamente retornados. Não garante
+automaticamente que toda frase da LLM seja correta; os casos de avaliação estão
+em [avaliacao-assistente.md](docs/avaliacao-assistente.md).
+
+O histórico opcional aceita até oito mensagens `user`/`assistant`. O módulo não
+armazena conversas no banco. Pergunta, histórico enviado e agregados necessários
+compõem as requisições ao Groq; a chave aparece somente na autenticação HTTP.
+Dados individuais das fontes, senhas do banco e arquivos locais não entram nas
+ferramentas. O ciclo tem limites de rodadas/chamadas e trata falta de acesso,
+limite de uso, timeout e respostas incompletas sem repassar o erro bruto do provedor.
+
+A resposta inclui `uso`: tentativas HTTP (`chamadas_api`), quantidade de respostas
+com contagem informada (`respostas_com_uso`) e tokens de entrada, saída e total.
+As contagens somam somente o uso informado pelo provedor; sem esse dado, tokens
+ficam nulos. Erros podem consumir recursos não informados nesse resumo, portanto
+o painel Usage do Groq continua sendo a referência para o consumo da conta.
+Essa etapa não persiste prompts nem métricas de uso no banco.
+
+Erros 429 e falhas HTTP transitórias admitem uma nova tentativa por rodada,
+respeitando `retry-after` numérico de até cinco segundos. Esperas maiores são
+devolvidas como erro controlado, sem repetir antes do prazo. O cliente limita
+cada resposta a 2.048 tokens; no GPT-OSS solicita reasoning baixo e não retorna
+o raciocínio interno. A disponibilidade e os limites do plano devem ser
+conferidos no [console Groq](https://console.groq.com/settings/limits).
+
+Uma falha `tool_use_failed` também admite uma única nova geração, dentro das
+mesmas duas tentativas HTTP por rodada. O cliente repete os nomes permitidos
+e pode exigir o nome canônico da comparação quando o modelo usa a variação
+`compare_municipios`. Não executa nem repassa os argumentos da geração recusada:
+a nova resposta ainda passa pelo catálogo e pela validação Pydantic.
+O ciclo aceita até cinco rodadas e seis funções por conversa.
+
+Sem consulta válida, o backend só aceita motivos enumerados para recusa ou
+esclarecimento e devolve mensagens fixas; texto livre com números continua
+bloqueado. Se o GPT-OSS falhar antes de consultar dados, a segunda tentativa
+pode usar [JSON Schema estrito](https://console.groq.com/docs/structured-outputs),
+sem ferramentas e com no máximo 256 tokens, apenas para classificar o pedido.
+A classificação `consulta_necessaria` continua sendo erro de dados não obtidos,
+sem autorizar uma resposta factual. A primeira rodada permite escolher entre
+consultar funções e responder por esse protocolo de recusa.
+
+O cliente usa HTTPX, já presente nas dependências, conforme o [protocolo oficial
+de tool calling](https://console.groq.com/docs/tool-use/local-tool-calling).
+O RAG documental e a interface definitiva ainda não foram implementados.
+Antes de publicar a rota, será necessário definir controle de acesso e limites
+de uso do provedor; nesta etapa o uso é local.
+
 ## Testes e próximos passos
 
 ```powershell
@@ -679,9 +791,9 @@ As bases SINAN e SESA estão integradas e conferidas no Supabase, com consultas
 próprias e sem mistura de contagens. A integração de 2026 e a avaliação própria
 SINAN foram concluídas, mantendo a avaliação SESA de 2020–2024 e o serviço
 anterior. As previsões têm modelo, versão, origem e limitações explícitos.
-A próxima etapa é Llama via Groq com
-function calling, seguida de RAG com documentos oficiais. O acesso ao modelo
-no provedor ainda precisa ser conferido na conta que será utilizada.
+O fluxo de function calling e a inferência GPT-OSS via Groq já funcionam,
+com respostas reais conferidas e limitações registradas. A avaliação continuará
+nas próximas integrações; depois segue RAG com documentos oficiais.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).

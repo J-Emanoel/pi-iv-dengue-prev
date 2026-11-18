@@ -7,6 +7,7 @@ pydantic>=2.7,<3
 pandas>=2.2,<3
 streamlit>=1.40,<2
 requests>=2.32,<3
+httpx>=0.27,<1
 python-dotenv>=1.0,<2
 
 # Machine Learning: variáveis numéricas, modelos tabulares e persistência local
@@ -14,6 +15,5 @@ numpy>=1.26,<3
 scikit-learn>=1.5,<2
 joblib>=1.4,<2
 
-# Desenvolvimento: testes automatizados e cliente HTTP usado nos testes da API
-httpx>=0.27,<1
+# Desenvolvimento: testes automatizados
 pytest>=8,<10

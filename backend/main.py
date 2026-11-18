@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.analitica import BASE_ANALITICA, BASE_SESA, consulta_cobertura
+from backend.assistente import ErroAssistente, conversar, get_cliente_groq, status_configuracao
 from backend.database import DatabaseConfigurationError, get_db
 from backend.models import (
     CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, PopulacaoMunicipal, VinculoMunicipioEstacao,
@@ -15,13 +16,15 @@ from backend.models import (
 from backend.previsoes import (
     ConsultaPrevisaoError, PrevisaoIndisponivelError, ServicoPrevisoes, get_servico_previsoes,
 )
+from backend.ferramentas_ia import get_ferramentas_ia
 from backend.schemas import (
     BaseAnaliticaResponse, BaseSesaResponse, CasoResponse, ClimaResponse, CoberturaResponse, CoberturaSesaResponse,
     EstacaoResponse, ModeloPrevisaoResponse, MunicipioResponse, PopulacaoResponse,
     PrevisoesResponse, VinculoEstacaoResponse,
+    AssistenteRequest, AssistenteResponse, ConfiguracaoAssistenteResponse,
 )
 
-app = FastAPI(title="API DenguePrev - ES", version="0.9.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.10.0")
 
 
 @app.exception_handler(DatabaseConfigurationError)
@@ -37,6 +40,11 @@ def database_error(request, exc):
 @app.exception_handler(PrevisaoIndisponivelError)
 def prediction_error(request, exc):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(ErroAssistente)
+def assistant_error(request, exc):
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
 @app.get("/")
@@ -231,3 +239,19 @@ def listar_previsoes(
         return servico.consultar(data_inicio=data_inicio, codigo_municipio=codigo_municipio)
     except ConsultaPrevisaoError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/assistente/status", response_model=ConfiguracaoAssistenteResponse, tags=["Assistente"])
+def consultar_configuracao_assistente():
+    """Confere somente a configuração local; não testa acesso ao provedor."""
+    return status_configuracao()
+
+
+@app.post("/assistente", response_model=AssistenteResponse, tags=["Assistente"])
+def perguntar_assistente(
+    pedido: AssistenteRequest,
+    cliente=Depends(get_cliente_groq),
+    ferramentas=Depends(get_ferramentas_ia),
+):
+    """Llama via Groq consulta funções de leitura e explica seus resultados agregados."""
+    return conversar(pedido, cliente, ferramentas)

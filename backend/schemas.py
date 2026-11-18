@@ -277,3 +277,48 @@ class PrevisoesResponse(BaseModel):
     total_municipios: int
     municipios_com_previsao: int
     resultados: list[PrevisaoMunicipalResponse]
+
+
+class MensagemConversa(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class AssistenteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    pergunta: str = Field(min_length=1, max_length=2000)
+    fonte: Literal["sinan", "sesa"] = "sinan"
+    historico: list[MensagemConversa] = Field(default_factory=list, max_length=8)
+
+
+class ConsultaAssistenteResponse(BaseModel):
+    ferramenta: str
+    argumentos: dict
+    sucesso: bool
+    resultado: dict
+
+
+class UsoAssistenteResponse(BaseModel):
+    chamadas_api: int = Field(default=0, ge=0)
+    respostas_com_uso: int = Field(default=0, ge=0)
+    tokens_entrada: int | None = Field(default=None, ge=0)
+    tokens_saida: int | None = Field(default=None, ge=0)
+    tokens_total: int | None = Field(default=None, ge=0)
+
+
+class AssistenteResponse(BaseModel):
+    resposta: str
+    provedor: Literal["groq"] = "groq"
+    modelo_llm: str
+    consultas: list[ConsultaAssistenteResponse]
+    uso: UsoAssistenteResponse | None = None
+
+
+class ConfiguracaoAssistenteResponse(BaseModel):
+    provedor: Literal["groq"] = "groq"
+    modelo_llm: str | None
+    configuracao_local_completa: bool
+    pendencias: list[str]

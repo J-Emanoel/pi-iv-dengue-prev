@@ -64,8 +64,11 @@ validação temporal, usando métricas como MAE e RMSE. As variáveis usarão
 somente informações disponíveis até a data da previsão. A divisão de treino
 e avaliação não será aleatória.
 
-A LLM prevista é Llama via Groq. Ela consultará serviços do backend e
-explicará resultados estruturados. Os cálculos e as previsões ficarão no
+A LLM prevista originalmente era Llama via Groq. Em 18/11/2026, a configuração
+foi adaptada para GPT-OSS 120B no mesmo provedor, devido à retirada dos IDs Llama
+dos planos Free/Developer, conforme a [documentação Groq](https://console.groq.com/docs/deprecations).
+O material de apoio do professor permite modelos abertos pelo Groq. A LLM
+consultará serviços do backend e explicará resultados estruturados. Os cálculos e as previsões ficarão no
 backend e no ML. O RAG será acrescentado para consultas fundamentadas em
 documentos oficiais, separado da previsão.
 
@@ -82,7 +85,10 @@ integrados e conferidos. A comparação de fontes foi executada e encontrou uma
 série estadual adicional, adotada e carregada separadamente no Supabase.
 A primeira avaliação temporal e o serviço de previsões do estudo histórico
 estão implementados, com estratégia, versão e limitações explícitas.
-A próxima etapa é integrar Llama via Groq com function calling.
+O fluxo de function calling e a inferência GPT-OSS via Groq estão implementados.
+As primeiras respostas reais sobre modelo, previsão de Vitória e comparação
+municipal foram conferidas. A avaliação registra falhas e ressalvas; não é uma
+garantia de fidelidade de respostas futuras.
 
 Atualização de 18/11/2026: os pacotes adicionais SINAN e INMET foram integrados
 em transação única no Supabase. O SINAN soma agora 363.957 registros em 11.844
@@ -107,7 +113,10 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 - [x] Exemplos temporais preparados e primeira comparação de persistência, Random Forest e Gradient Boosting executada.
 - [x] Serviço de previsões pela API para o estudo histórico, com fonte, estratégia selecionada e limitações.
 - [x] SINAN e INMET 2026 integrados com backup/transação e avaliação ML própria, sem mistura com SESA.
-- [ ] LLM com function calling e RAG fundamentado em documentos.
+- [x] Infraestrutura de function calling e ferramentas de leitura com testes de protocolo/argumentos.
+- [x] Chave Groq validada no catálogo e GPT-OSS 120B configurado localmente.
+- [x] Inferência real via Groq e avaliação inicial das respostas com a conta utilizada.
+- [ ] RAG fundamentado em documentos oficiais.
 - [ ] Interface React/Vite integrada e aplicação publicada e testada.
 
 ### O que já funciona
@@ -487,15 +496,34 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 
 ### Continuidade até a entrega final
 
+O backend agora expõe `/assistente/status` e `POST /assistente`. As ferramentas
+consultam cadastro, histórico, comparação por semanas comuns, modelo e previsões.
+Os testes simulam o protocolo do provedor e não demonstram seleção correta de
+ferramentas ou fidelidade de uma LLM real. GROQ_API_KEY/GROQ_MODEL estão
+configurados nesta máquina; a consulta autenticada ao catálogo retornou 200.
+O modelo escolhido é GPT-OSS 120B; a configuração aceita ainda GPT-OSS 20B e
+IDs Llama legados com acesso Enterprise, sem fallback automático. O cliente
+contabiliza chamadas/tokens informados e limita novas tentativas com espera.
+Na avaliação real, a previsão de Vitória retornou 44 registros para 01–07/11/2026.
+A comparação SINAN das semanas 40–43 retornou 123 registros para Vitória e
+210 para Vila Velha, com diferença de 87 calculada no backend. Foi necessário
+orientar a ferramenta de comparação, acomodar a busca de nomes no ciclo e
+tratar a variação indevida de nome gerada pelo modelo.
+Também foram conferidas ausência versus zero, recusa de previsão fora da janela,
+separação SINAN/SESA e recusa de escrita. Recusas sem dados usam classificação
+enumerada e mensagens fixas do backend, sem executar funções. O resumo da sessão
+registra 38.544 tokens informados e 40 requisições, incluindo diagnósticos; falhas
+sem `usage` podem ter consumo adicional. A qualidade continuará sendo avaliada.
+Critérios de verificação em [avaliacao-assistente.md](avaliacao-assistente.md).
+
 A atualização 2026 está aplicada e conferida. A referência é 31/10/2026 e a
 projeção disponível é 01–07/11/2026 para 15 municípios elegíveis; 63 retornam
 estimativa nula com motivo. Persistência continua selecionada, sem ganho
 demonstrado sobre a referência. O estudo SESA e seus artefatos permanecem
 preservados. A integração LLM deverá consultar fonte e datas explicitamente.
 
-A prioridade atual é integrar o assistente Llama via Groq aos serviços de dados
-e previsões com function calling. É preciso conferir o acesso ao modelo na
-conta do provedor antes de habilitar a integração real. A interpretação deve
+A inferência e as primeiras consultas reais do assistente GPT-OSS via Groq
+foram conferidas com os serviços de dados e previsões. A interpretação deve
 respeitar lacunas, seleção de amostras e revisões históricas. Em seguida,
 completar RAG, interface e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
