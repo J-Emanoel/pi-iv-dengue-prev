@@ -90,8 +90,8 @@ explicações da LLM se essa estratégia for apresentada ao usuário.
 - MAE/RMSE globais são calculados por exemplo e não garantem o mesmo erro em cada município.
 - O teste de 2024 já foi consultado nesta rodada. Estudos posteriores precisam
   registrar um novo protocolo e não apresentá-lo como teste ainda inédito.
-- A próxima etapa é definir o serviço de previsões com a estratégia e suas
-  limitações explícitas. Novas hipóteses de modelagem devem ser avaliadas sem
+- O serviço de previsões usa a estratégia selecionada e explicita suas
+  limitações. Novas hipóteses de modelagem devem ser avaliadas sem
   otimizar parâmetros sobre os resultados deste teste.
 
 ## Reprodução e artefatos
@@ -121,5 +121,16 @@ O carregamento verifica o hash e a compatibilidade das versões antes de abrir
 um artefato produzido pelo projeto. Somente artefatos locais de origem conhecida
 devem ser carregados. A persistência foi conferida contra as previsões em memória.
 
-As previsões ainda não estão expostas na API. O dashboard permanece com seu
-histórico existente; a LLM e o RAG continuam nas próximas etapas.
+As previsões estão expostas em `/previsoes`, e o modelo, versão, datas,
+métricas e limitações em `/modelo`. As 2.449 estimativas avaliáveis de 2024
+foram reproduzidas pelo serviço e comparadas ao arquivo salvo, sem divergências.
+A consulta padrão projeta a semana seguinte ao snapshot, de 29/12/2024 a
+04/01/2025; 52 municípios são elegíveis e 26 têm previsão nula por insuficiência
+de dados. Essa projeção não integra o teste de 2024 nem tem métricas próprias.
+Não foram acrescentadas observações futuras ao dataset nem alterados os
+resultados ou artefatos da avaliação. Não há previsão atual de 2026.
+
+O serviço exige o mesmo snapshot do experimento e usa as funções de preparação
+e inferência do treinamento. O calendário de um alvo posterior é criado somente
+em memória; clima, contagem e população futuros não são presumidos. O dashboard
+permanece com seu histórico existente; a LLM e o RAG continuam nas próximas etapas.

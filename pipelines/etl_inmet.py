@@ -7,17 +7,17 @@ import io
 import json
 import math
 import re
-import shutil
 import sys
 import tempfile
 import warnings
 import zipfile
 from datetime import date, datetime, timedelta, timezone
+from contextlib import nullcontext
 from pathlib import Path
 
 import pandas as pd
 
-from pipelines.arquivos import sha256_arquivo
+from pipelines.arquivos import abrir_zip_anual, conferir_atualizacao_2026, sha256_arquivo
 from pipelines.calendario import ano_semana_epidemiologica, inicio_ano_epidemiologico, semanas_no_ano
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +28,7 @@ CLIMA_CSV = OUTPUT_DIR / "clima_semanal_inmet.csv"
 RESUMO_JSON = OUTPUT_DIR / "clima_inmet_resumo.json"
 FUSO = "America/Sao_Paulo"
 ANOS = list(range(2020, 2026))
+ANOS_SUPORTADOS = list(range(2020, 2027))
 COLUNAS_ESTACOES = ("codigo", "nome", "uf", "latitude", "longitude", "altitude", "ano_metadados", "fonte_sha256")
 COLUNAS_CLIMA = (
     "codigo_estacao", "ano", "semana_epidemiologica", "data_inicio",
@@ -139,14 +140,14 @@ def validar_clima(estacoes, registros):
             or not isinstance(row["latitude"], (int, float)) or not -90 <= row["latitude"] <= 90
             or not isinstance(row["longitude"], (int, float)) or not -180 <= row["longitude"] <= 180
             or (row["altitude"] is not None and not math.isfinite(row["altitude"]))
-            or row["ano_metadados"] not in ANOS or not re.fullmatch(r"[a-f0-9]{64}", row["fonte_sha256"])
+            or row["ano_metadados"] not in ANOS_SUPORTADOS or not re.fullmatch(r"[a-f0-9]{64}", row["fonte_sha256"])
         ):
             raise ValueError("Cadastro de estação inválido.")
     chaves = set()
     for row in registros:
         codigo, ano, semana = row["codigo_estacao"], row["ano"], row["semana_epidemiologica"]
         chave = codigo, ano, semana
-        if codigo not in codigos or chave in chaves or ano not in ANOS or not 1 <= semana <= semanas_no_ano(ano):
+        if codigo not in codigos or chave in chaves or ano not in ANOS_SUPORTADOS or not 1 <= semana <= semanas_no_ano(ano):
             raise ValueError("Chave climática inválida ou duplicada.")
         inicio = inicio_ano_epidemiologico(ano) + timedelta(weeks=semana - 1)
         if date.fromisoformat(row["data_inicio"]) != inicio or row["fuso"] != FUSO:
@@ -191,7 +192,8 @@ def gravar_csv(caminho, colunas, registros):
             temporario.unlink(missing_ok=True)
 
 
-def processar_pacote(zip_path=ROOT / "arquivos-proj-int-iv.zip", output_dir=OUTPUT_DIR, manifesto=MANIFESTO):
+def processar_pacote(zip_path=ROOT / "arquivos-proj-int-iv.zip", output_dir=OUTPUT_DIR, manifesto=MANIFESTO,
+                     *, atualizacao_2026=None, manifesto_atualizacao=None):
     zip_path, output_dir, manifesto = Path(zip_path), Path(output_dir), Path(manifesto)
     saidas = [output_dir / name for name in (ESTACOES_CSV.name, CLIMA_CSV.name, RESUMO_JSON.name)]
     if {path.resolve() for path in saidas} & {zip_path.resolve(), manifesto.resolve()}:
@@ -200,29 +202,35 @@ def processar_pacote(zip_path=ROOT / "arquivos-proj-int-iv.zip", output_dir=OUTP
     digest = sha256_arquivo(zip_path)
     if digest != inventario["input"]["sha256"]:
         raise ValueError("ZIP diferente do inventário de originais.")
+    entradas = [dict(arquivo=zip_path.name, sha256=digest)]
+    anos = ANOS
+    if atualizacao_2026 is not None:
+        fonte_nova = conferir_atualizacao_2026(atualizacao_2026, "inmet", manifesto_atualizacao)
+        entradas.append(dict(arquivo=Path(atualizacao_2026).name, sha256=fonte_nova["sha256"]))
+        digest = hashlib.sha256(json.dumps(entradas, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        anos = ANOS_SUPORTADOS
     fontes = {item["filename"]: item for item in inventario["packages"] if item["source"].startswith("INMET")}
     estacoes, frames, arquivos = {}, [], []
     with zipfile.ZipFile(zip_path) as outer:
-        for ano in ANOS:
+        for ano in anos:
             nome = f"{ano}.zip"
-            fonte = fontes[nome]
+            externo = ano == 2026
+            fonte = fonte_nova if externo else fontes[nome]
             candidatos = [item for item in outer.infolist() if Path(item.filename).name == nome]
-            if len(candidatos) != 1 or candidatos[0].file_size != fonte["bytes"]:
+            if not externo and (len(candidatos) != 1 or candidatos[0].file_size != fonte["bytes"]):
                 raise ValueError(f"Pacote anual {ano} ausente ou ambíguo.")
             print(f"Processando estações ES do pacote {ano}...", flush=True)
-            with tempfile.SpooledTemporaryFile(max_size=8 * 1024**2) as spool:
-                with outer.open(candidatos[0]) as source:
-                    shutil.copyfileobj(source, spool, length=1024**2)
-                spool.seek(0)
+            if not externo:
                 anual_hash = hashlib.sha256()
-                for bloco in iter(lambda: spool.read(1024**2), b""):
-                    anual_hash.update(bloco)
+                with outer.open(candidatos[0]) as raw:
+                    for bloco in iter(lambda: raw.read(1024**2), b""):
+                        anual_hash.update(bloco)
                 if anual_hash.hexdigest() != fonte["sha256"]:
                     raise ValueError(f"Checksum do pacote {ano} diverge do inventário.")
-                spool.seek(0)
-                with zipfile.ZipFile(spool) as inner:
+            with (zipfile.ZipFile(atualizacao_2026) if externo else nullcontext(outer)) as pacote:
+                with abrir_zip_anual(pacote, None if externo else candidatos[0]) as inner:
                     membros = [item for item in inner.infolist() if "INMET_SE_ES_" in item.filename.upper() and item.filename.lower().endswith(".csv")]
-                    if len(membros) != fonte["es_weather_csv_count"]:
+                    if not membros or (not externo and len(membros) != fonte["es_weather_csv_count"]):
                         raise ValueError(f"Quantidade de arquivos ES diverge no pacote {ano}.")
                     for membro in membros:
                         raw = inner.read(membro)
@@ -237,7 +245,7 @@ def processar_pacote(zip_path=ROOT / "arquivos-proj-int-iv.zip", output_dir=OUTP
     cadastro = sorted(estacoes.values(), key=lambda row: row["codigo"])
     validar_clima(cadastro, semanas)
     resumo = dict(
-        schema_version=1, tipo="clima_semanal_inmet", fuso=FUSO, anos_arquivos=ANOS,
+        schema_version=1, tipo="clima_semanal_inmet", fuso=FUSO, anos_arquivos=anos, entradas=entradas,
         gerado_em_utc=datetime.now(timezone.utc).isoformat(), entrada_sha256=digest,
         estacoes=len(cadastro), linhas_saida=len(semanas), horas_observadas=len(dados), arquivos=arquivos,
         estacoes_sha256=gravar_csv(saidas[0], COLUNAS_ESTACOES, cadastro),
@@ -247,7 +255,7 @@ def processar_pacote(zip_path=ROOT / "arquivos-proj-int-iv.zip", output_dir=OUTP
             "Chuva é a soma das horas válidas; médias usam apenas medições válidas. Consulte a cobertura.",
             "Valores ausentes não foram convertidos em zero; não houve imputação.",
             "Metadados do cadastro usam o último arquivo disponível; versões anuais estão neste resumo.",
-            "Não há clima de 2026 neste pacote. Vínculos geográficos são gerados separadamente por pipelines.vincular_estacoes.",
+            "Vínculos geográficos são gerados separadamente por pipelines.vincular_estacoes; consulte o período efetivamente observado.",
         ],
     )
     saidas[2].write_text(json.dumps(resumo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -258,7 +266,7 @@ def carregar_clima(caminho_csv=CLIMA_CSV, caminho_resumo=RESUMO_JSON, caminho_es
     resumo = json.loads(Path(caminho_resumo).read_text(encoding="utf-8"))
     if (
         not isinstance(resumo, dict) or resumo.get("schema_version") != 1 or resumo.get("tipo") != "clima_semanal_inmet"
-        or resumo.get("fuso") != FUSO or resumo.get("anos_arquivos") != ANOS
+        or resumo.get("fuso") != FUSO or resumo.get("anos_arquivos") not in (ANOS, ANOS_SUPORTADOS)
         or resumo.get("clima_sha256") != sha256_arquivo(caminho_csv)
         or resumo.get("estacoes_sha256") != sha256_arquivo(caminho_estacoes)
     ):
@@ -296,9 +304,10 @@ def carregar_clima(caminho_csv=CLIMA_CSV, caminho_resumo=RESUMO_JSON, caminho_es
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=ROOT / "arquivos-proj-int-iv.zip")
+    parser.add_argument("--atualizacao-2026", type=Path, help="ZIP INMET 2026 conferido, combinado ao histórico antes de agregar.")
     args = parser.parse_args()
     try:
-        resumo = processar_pacote(args.input)
+        resumo = processar_pacote(args.input, atualizacao_2026=args.atualizacao_2026)
         print(f"INMET validado: {resumo['estacoes']} estações; {resumo['linhas_saida']} semanas; {resumo['horas_observadas']} horas.")
         return 0
     except (OSError, ValueError, KeyError, csv.Error, zipfile.BadZipFile, pd.errors.ParserError, pd.errors.ParserWarning) as exc:

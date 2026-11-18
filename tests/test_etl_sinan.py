@@ -85,6 +85,7 @@ class EtlTests(unittest.TestCase):
             source, output, summary = root / "source.zip", root / "out.csv", root / "out.json"
             with zipfile.ZipFile(source, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("DENGBR25.csv.zip", annual.getvalue())
+                archive.writestr("municipios_ibge.csv", "CSV auxiliar do pacote original\n")
             original = source.read_bytes()
             with contextlib.redirect_stdout(io.StringIO()):
                 document = processar_pacote(source, [2025], output, summary, chunksize=1)

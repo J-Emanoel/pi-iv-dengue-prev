@@ -3,7 +3,7 @@
 import argparse
 import csv
 import json
-import shutil
+import re
 import sys
 import tempfile
 import warnings
@@ -17,11 +17,11 @@ import pandas as pd
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pipelines.arquivos import sha256_arquivo
+from pipelines.arquivos import abrir_zip_anual, conferir_atualizacao_2026, sha256_arquivo
 from pipelines.calendario import ano_semana_epidemiologica
 
 ROOT = Path(__file__).resolve().parents[1]
-ANOS_PADRAO = list(range(2020, 2027))
+ANOS_PADRAO = list(range(2020, 2026))
 OUTPUT_CSV = ROOT / "data/processed/dengue_semanal.csv"
 OUTPUT_JSON = ROOT / "data/processed/dengue_semanal_resumo.json"
 COLUNAS = {"SG_UF", "ID_MN_RESI", "DT_SIN_PRI", "DT_NOTIFIC", "SEM_PRI"}
@@ -86,31 +86,34 @@ def processar_pacote(zip_path, anos, output_csv, output_json, *, chunksize=50000
     totals, overall, files = Counter(), Counter(), []
     source_hash = sha256_arquivo(zip_path)
     with zipfile.ZipFile(zip_path) as outer:
-        packages = [(year, localizar_zip_anual(outer.namelist(), year)) for year in anos]
+        csvs = [n for n in outer.namelist() if re.fullmatch(r"DENGBR\d{2}\.CSV", Path(n).name.upper())]
+        avulso = bool(csvs)
+        if avulso:
+            if len(csvs) != 1 or len(anos) != 1 or Path(csvs[0]).name.upper() != f"DENGBR{str(anos[0])[-2:]}.CSV":
+                raise ValueError("ZIP anual deve conter um CSV correspondente ao único ano informado.")
+            packages = [(anos[0], None)]
+        else:
+            packages = [(year, localizar_zip_anual(outer.namelist(), year)) for year in anos]
         for year, name in packages:
             metrics = Counter()
-            print(f"Processando {name} em blocos...", flush=True)
+            print(f"Processando {name or zip_path.name} em blocos...", flush=True)
             # Somente o ZIP comprimido usa spool; o CSV é lido diretamente em fluxo.
-            with tempfile.SpooledTemporaryFile(max_size=8 * 1024**2) as spool:
-                with outer.open(name) as source:
-                    shutil.copyfileobj(source, spool, length=1024**2)
-                spool.seek(0)
-                with zipfile.ZipFile(spool) as inner:
-                    candidates = [n for n in inner.namelist() if n.lower().endswith(".csv")]
-                    if len(candidates) != 1:
-                        raise ValueError(f"{name}: esperado exatamente um CSV.")
-                    with inner.open(candidates[0]) as source, warnings.catch_warnings():
-                        warnings.simplefilter("error", pd.errors.ParserWarning)
-                        chunks = pd.read_csv(
-                            source, sep=",", encoding="utf-8-sig", dtype=str,
-                            keep_default_na=False, chunksize=chunksize,
-                            on_bad_lines="error", index_col=False,
-                        )
-                        for frame in chunks:
-                            grouped, current = agregar_bloco(frame, anos)
-                            totals.update(grouped)
-                            metrics.update(current)
-            files.append({"ano_arquivo": year, "arquivo": name, **dict(metrics)})
+            with abrir_zip_anual(outer, name) as inner:
+                candidates = [n for n in inner.namelist() if n.lower().endswith(".csv")]
+                if len(candidates) != 1:
+                    raise ValueError(f"{name}: esperado exatamente um CSV.")
+                with inner.open(candidates[0]) as source, warnings.catch_warnings():
+                    warnings.simplefilter("error", pd.errors.ParserWarning)
+                    chunks = pd.read_csv(
+                        source, sep=",", encoding="utf-8-sig", dtype=str,
+                        keep_default_na=False, chunksize=chunksize,
+                        on_bad_lines="error", index_col=False,
+                    )
+                    for frame in chunks:
+                        grouped, current = agregar_bloco(frame, anos)
+                        totals.update(grouped)
+                        metrics.update(current)
+            files.append({"ano_arquivo": year, "arquivo": name or zip_path.name, **dict(metrics)})
             overall.update(metrics)
     if not totals:
         raise ValueError("Nenhum registro válido no período. As saídas anteriores foram preservadas.")
@@ -137,6 +140,7 @@ def processar_pacote(zip_path, anos, output_csv, output_json, *, chunksize=50000
             "data_referencia": "DT_SIN_PRI",
             "anos_epidemiologicos": anos,
             "arquivo_entrada": zip_path.name,
+            "formato_entrada": "zip_anual" if avulso else "pacote_original",
             "entrada_sha256": source_hash,
             "csv_sha256": csv_hash,
             "linhas_saida": len(totals),
@@ -166,8 +170,13 @@ def main():
     parser.add_argument("--years", nargs="+", type=int, default=ANOS_PADRAO)
     parser.add_argument("--output-csv", type=Path, default=OUTPUT_CSV)
     parser.add_argument("--output-json", type=Path, default=OUTPUT_JSON)
+    parser.add_argument("--conferir-2026", action="store_true", help="Exige o ZIP anual de 2026 fixado no inventário adicional.")
     args = parser.parse_args()
     try:
+        if args.conferir_2026:
+            if args.years != [2026]:
+                raise ValueError("Use --years 2026 para a atualização anual.")
+            conferir_atualizacao_2026(args.input, "sinan")
         processar_pacote(args.input, args.years, args.output_csv, args.output_json)
     except (OSError, ValueError, zipfile.BadZipFile, pd.errors.ParserError, pd.errors.ParserWarning) as exc:
         print(f"Erro no ETL: {exc}", file=sys.stderr)

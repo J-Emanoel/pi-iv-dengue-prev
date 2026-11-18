@@ -38,6 +38,13 @@ CANDIDATOS_TESTE = (
 )
 
 
+def base_sinan_ficticia(n=235, inicio=date(2022, 1, 2)):
+    base = base_ficticia(n=n, inicio=inicio).rename(columns={"registro_sesa_presente": "registro_sinan_presente"})
+    base = base.drop(columns=["fonte_serie", "data_referencia_registros"])
+    base["tipo_numerador"] = "registros_notificados_sinan"
+    return base
+
+
 class VariaveisMLTests(unittest.TestCase):
     def test_snapshot_com_coluna_individual_ou_horario_e_rejeitado(self):
         base = base_ficticia()
@@ -173,6 +180,29 @@ class ModelagemMLTests(unittest.TestCase):
                 stream.write(b"alterado")
             with self.assertRaisesRegex(ValueError, "hash divergente"):
                 carregar_modelo(pasta)
+
+
+class ModelagemSinanTests(unittest.TestCase):
+    def test_fontes_nao_sao_intercambiaveis_silenciosamente(self):
+        with self.assertRaises(ValueError):
+            construir_variaveis(base_sinan_ficticia())
+        with self.assertRaises(ValueError):
+            construir_variaveis(base_ficticia(), fonte="sinan")
+
+    def test_sinan_reserva_2025_e_nao_aprende_com_alvos_de_2026(self):
+        dados = construir_variaveis(base_sinan_ficticia(), fonte="sinan")
+        particoes = separar_particoes(dados, fonte="sinan")
+        self.assertEqual(set(particoes["validacao"]["ano"]), {2024})
+        self.assertEqual(set(particoes["teste"]["ano"]), {2025})
+        self.assertLess(particoes["treino"]["data_inicio"].max(), particoes["validacao"]["data_inicio"].min())
+        _, antes, _, previstos_antes = executar_experimento(dados, candidatos=CANDIDATOS_TESTE, fonte="sinan")
+        alterados = dados.copy()
+        alterados.loc[alterados["ano"].eq(2026), "alvo"] *= 10000
+        _, depois, _, previstos_depois = executar_experimento(alterados, candidatos=CANDIDATOS_TESTE, fonte="sinan")
+        self.assertEqual(antes["selecionado"], depois["selecionado"])
+        np.testing.assert_allclose(previstos_antes["estimado"], previstos_depois["estimado"], atol=1e-10)
+        for original, novo in zip(antes["validacao"], depois["validacao"]):
+            np.testing.assert_allclose([original["mae"], original["rmse"]], [novo["mae"], novo["rmse"]], atol=1e-10)
 
 
 if __name__ == "__main__":

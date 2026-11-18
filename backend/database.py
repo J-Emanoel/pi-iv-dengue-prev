@@ -1,11 +1,13 @@
 """Configuração de conexão, sem abrir o banco durante imports."""
 
 import os
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +35,11 @@ def database_url() -> str:
 
 @lru_cache(maxsize=1)
 def get_engine():
-    return create_engine(database_url(), pool_pre_ping=True)
+    url = database_url()
+    # UPDATE em lote evita uma viagem de rede por linha no PostgreSQL remoto.
+    opcoes = (dict(executemany_mode="values_plus_batch", executemany_batch_page_size=500)
+              if url.startswith("postgresql+psycopg2://") else {})
+    return create_engine(url, pool_pre_ping=True, **opcoes)
 
 
 def SessionLocal():
@@ -45,3 +51,17 @@ def SessionLocal():
 def get_db():
     with SessionLocal() as session:
         yield session
+
+
+@contextmanager
+def transacao(alvo):
+    """Reutiliza uma transação externa para compor cargas sem commits parciais."""
+    if isinstance(alvo, Connection):
+        if not alvo.in_transaction():
+            raise ValueError("A conexão da carga conjunta precisa de transação ativa.")
+        yield alvo
+    else:
+        with alvo.begin() as connection:
+            if connection.dialect.name == "sqlite" and not connection.connection.driver_connection.in_transaction:
+                connection.exec_driver_sql("BEGIN")
+            yield connection

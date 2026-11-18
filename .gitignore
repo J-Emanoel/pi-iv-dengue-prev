@@ -6,6 +6,8 @@
 
 # Dados originais, saídas do ETL e backups locais
 /arquivos-proj-int-iv.zip
+/DENGBR26.csv.zip
+/2026.zip
 /data/
 
 # Model artifacts

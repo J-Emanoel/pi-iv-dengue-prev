@@ -13,28 +13,28 @@ O fluxo atual é **ZIP original → ETL → CSV agregado → PostgreSQL → API 
 
 O acesso ao PostgreSQL compartilhado no Supabase foi configurado nesta máquina.
 **A carga corrigida já foi aplicada e conferida no banco online**: 78 municípios,
-11.679 linhas agregadas, 362.712 registros e nenhuma chave municipal/semanal
+11.844 linhas agregadas, 363.957 registros e nenhuma chave municipal/semanal
 duplicada. O índice único foi instalado e as consultas da API foram validadas
 contra esse banco. Todos os agregados retornados coincidem com a fonte corrigida.
 Os 78 municípios já possuem nomes do cadastro IBGE, exibidos pela API e pelo
 Streamlit. A população foi integrada em `populacoes_municipais`, com 546
-referências para os 78 municípios de 2020 a 2026. O clima INMET de 2020–2025
-também já foi carregado: 13 estações, 3.873 registros semanais e 468 vínculos
+referências para os 78 municípios de 2020 a 2026. O clima INMET de 2020–2026
+também já foi carregado: 13 estações, 4.346 registros semanais e 546 vínculos
 município/ano por proximidade geográfica. As consultas foram conferidas contra
 as fontes e repetir as cargas não alterou os dados.
 
 A base integrada também está preparada no Supabase: a visão
 `base_analitica_semanal` contém 28.548 combinações de município e semana em
-2020–2026, sobre um calendário com 366 semanas. Mantém as 11.679 linhas SINAN
-e os 362.712 registros; as demais semanas ficam ausentes, sem preencher com zero.
+2020–2026, sobre um calendário com 366 semanas. Mantém as 11.844 linhas SINAN
+e os 363.957 registros; as demais semanas ficam ausentes, sem preencher com zero.
 As seis tabelas de origem foram preservadas e as junções conferidas integralmente.
 
 O indicador implementado é **registros notificados da extração por 100 mil
-habitantes**, usando a população do respectivo ano. O alvo escolhido para o ML
-é o registro estadual por semana de notificação; a avaliação de cobertura e
+habitantes**, usando a população do respectivo ano. Há experimentos separados
+para SESA por notificação e SINAN por primeiros sintomas; a avaliação de cobertura e
 suas restrições de interpretação continuam documentadas como pendentes.
 O vínculo geográfico é uma aproximação: não comprova que uma estação represente
-o clima de todo o município. O pacote não contém clima de 2026.
+o clima de todo o município. A atualização recebida contém clima até 31/10/2026.
 
 A série SESA de 2020–2024 por semana de notificação foi adotada para o ML e já
 está no Supabase, separada do SINAN: `notificacoes_sesa` contém 13.290 agregados
@@ -43,7 +43,7 @@ município/semana; 7.068 ficam sem registro, preservadas como nulas. As fontes,
 referências e limitações ficam explícitas. A carga foi comparada integralmente
 com a saída validada, e sua repetição resultou em zero alterações.
 
-O SINAN permanece como referência em suas tabelas, visão e rotas atuais.
+O SINAN tem tabelas, visão e rotas próprias, sem mistura com SESA.
 O Streamlit provisório continua exibindo esse histórico SINAN. A série estadual
 está disponível nas novas consultas `/base-sesa` e `/cobertura-sesa`.
 A primeira avaliação de ML foi executada: 1.795 exemplos de treino, 2.774 de
@@ -51,16 +51,33 @@ validação e 2.449 de teste, com 40 variáveis. A persistência teve menor erro
 validação que os quatro candidatos de Random Forest/Gradient Boosting. No
 teste de 2024, a estratégia selecionada teve MAE 20,45 e RMSE 51,40 registros
 por município/semana do recorte. O [relatório de avaliação](docs/avaliacao-ml.md)
-documenta os resultados, as limitações e a reprodução. Previsões ainda não
-estão disponíveis pela API; esse é o próximo serviço a implementar.
+documenta os resultados, as limitações e a reprodução. O serviço de previsões
+já está implementado em `/modelo` e `/previsoes`, usando o experimento local
+congelado. A consulta padrão projeta somente a semana de 29/12/2024 a
+04/01/2025, seguinte ao snapshot; não é uma previsão atual de 2026.
 As decisões ficam no [contexto do projeto](docs/contexto-projeto.md#comparação-de-fontes-e-proposta-para-o-ml).
+
+Em 18/11/2026, os ZIPs adicionais SINAN e INMET foram integrados ao Supabase
+em transação única, com backups e conferência de preservação da SESA, cadastro,
+população e SINAN de 2020–2025. A série SINAN 2026 contém 20.570 registros de
+77 municípios, em 1.559 agregados. Rio Novo do Sul não aparece na extração;
+isso não foi interpretado como zero. O clima de 2026 usa 11 estações do ES.
+
+A avaliação própria SINAN usa treino em 2020–2023, validação em 2024 e teste
+em 2025. A persistência foi selecionada; no teste, MAE 9,69 e RMSE 19,15 em
+741 exemplos de 44 municípios. Esses erros não são diretamente comparáveis
+aos do estudo SESA. `/modelo?fonte=sinan` identifica esse experimento, e
+`/previsoes?fonte=sinan` estima 01–07/11/2026 com referência até 31/10/2026:
+15 municípios têm dados suficientes e 63 recebem estimativa nula com motivos.
+Não é uma previsão da semana atual nem um ganho demonstrado sobre a persistência.
+Consulte a [avaliação da atualização](docs/avaliacao-sinan-2026.md).
 
 A conexão real fica somente no `.env` local, ignorado pelo Git. O
 `.env.example` contém valores fictícios; cada participante configura seu acesso
 localmente. O backup anterior à correção permanece em `data/interim/backups/`,
 também fora do versionamento.
 
-O ETL corrigido e a carga foram validados localmente. No pacote atual, o resultado
+O ETL corrigido e a carga foram validados localmente. No pacote original, o resultado
 é **11.679 linhas agregadas e 362.712 registros**, por município de residência,
 ano e semana epidemiológica calculados pela data dos primeiros sintomas.
 Dos 363.020 registros de residentes do ES, 308 ficam fora do período
@@ -87,9 +104,10 @@ Ausência de registro não foi convertida em zero.
 | `backend/povoar_banco.py` | Confere a fonte e sincroniza os agregados com o banco. |
 | `backend/main.py` | Disponibiliza as consultas pela API FastAPI. |
 | `backend/schemas.py` | Define o formato JSON das respostas da API. |
+| `backend/previsoes.py` | Confere o experimento salvo e serve estimativas com datas, elegibilidade e limitações. |
 | `app.py` | Dashboard provisório em Streamlit, que consulta a API. |
 | `frontend/` | Pasta reservada para a futura interface React/Vite. |
-| `ml/preparar_dados.py` | Congela a base SESA e cria lags, médias, sazonalidade e critérios de elegibilidade. |
+| `ml/preparar_dados.py` | Congela a fonte selecionada e cria lags, médias, sazonalidade e critérios de elegibilidade. |
 | `ml/treinar.py` | Compara persistência, Random Forest e Gradient Boosting e grava avaliação/artefato. |
 | `scripts/inspect_datasets.py` | Ferramenta auxiliar para inspecionar SINAN, INMET e IBGE. |
 | `tests/` | Testes da inspeção, do ETL, da carga e da API. |
@@ -99,7 +117,7 @@ Ausência de registro não foi convertida em zero.
 de calendário epidemiológico e hash de arquivos; não precisam ser executados
 separadamente. `backend/__init__.py` identifica o pacote Python.
 
-A pasta `data/` contém apenas arquivos locais gerados, incluindo backups, e é
+A pasta `data/` contém originais locais, derivados e backups, e é
 criada conforme a execução. O ZIP, `data/`, `.env` e `.venv/` ficam fora dos
 commits. Os CSVs/JSONs do fluxo antigo foram removidos; o agregado atual é o de
 `data/processed/`. A pasta `frontend/` permanece reservada com `.gitkeep`.
@@ -425,6 +443,10 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
   clima e versões, usando os mesmos filtros e paginação de `/base-analitica`.
 - `GET /cobertura-sesa`: diagnóstico da série estadual, com filtros `ano`,
   `codigo_municipio` e `cobertura_minima_clima_pct`.
+- `GET /modelo`: estratégia selecionada, versão do experimento, fonte, período,
+  métricas de validação/teste e limitações.
+- `GET /previsoes`: estimativas de uma semana para os municípios, com filtros
+  opcionais `data_inicio` (domingo do alvo) e `codigo_municipio`.
 
 Exemplo: `/vinculos-estacoes?ano=2025&codigo_municipio=320530` retorna o vínculo
 de Vitória à estação A612, a aproximadamente 1,248 km do centroide municipal.
@@ -503,6 +525,8 @@ modelos; o treinamento tem comandos próprios, descritos a seguir.
 
 ## Preparar e avaliar o ML
 
+Os comandos sem `--fonte` mantêm o experimento SESA de 2020–2024.
+
 ```powershell
 .venv\Scripts\python.exe -B -m ml.preparar_dados
 .venv\Scripts\python.exe -B -m ml.treinar
@@ -533,6 +557,115 @@ mudanças. Os resultados dos modelos de árvores permanecem registrados na
 avaliação. Consulte o [relatório completo](docs/avaliacao-ml.md) antes de interpretar
 as métricas como desempenho em todos os municípios ou períodos.
 
+## Atualização SINAN e INMET de 2026
+
+A carga já foi aplicada no Supabase compartilhado. Para consultar e treinar
+usando esse banco, não é necessário reaplicar os dados. Cada integrante gera
+seus artefatos locais com:
+
+```powershell
+.venv\Scripts\python.exe -B -m ml.preparar_dados --fonte sinan
+.venv\Scripts\python.exe -B -m ml.treinar --fonte sinan
+```
+
+SINAN mantém `DT_SIN_PRI`, conferido com `SEM_PRI`, e município de residência.
+O protocolo seleciona em 2024 e avalia em 2025. Alvos de 2026 não entram no
+treinamento nem na seleção. O snapshot termina na última semana SINAN observada,
+mantendo as lacunas municipais. Dados ficam em `data/processed/ml/sinan/` e
+modelos/avaliações em `ml/models/sinan/`, com ponteiros próprios. Para reprodução
+offline, use `--input CAMINHO/base_sinan.csv --fonte sinan` na preparação.
+
+Para reproduzir as fontes ou configurar outro banco, baixe os ZIPs das URLs de
+[fontes-2026.json](docs/fontes-2026.json). Guarde-os sem extrair em
+`data/raw/sinan/DENGBR26.csv.zip` e `data/raw/inmet/2026.zip`. Tamanho e SHA-256
+precisam corresponder às versões conferidas. Uma publicação revisada exige
+revisar esse inventário. O ZIP original continua intacto.
+
+```powershell
+.venv\Scripts\python.exe -B -m pipelines.etl_sinan
+.venv\Scripts\python.exe -B -m pipelines.etl_sinan --input data/raw/sinan/DENGBR26.csv.zip --years 2026 --conferir-2026 --output-csv data/processed/atualizacao_2026/dengue_semanal.csv --output-json data/processed/atualizacao_2026/dengue_semanal_resumo.json
+.venv\Scripts\python.exe -B -m pipelines.etl_inmet --atualizacao-2026 data/raw/inmet/2026.zip
+.venv\Scripts\python.exe -B -m pipelines.vincular_estacoes
+.venv\Scripts\python.exe -B -m backend.povoar_banco --atualizacao-2026
+```
+
+O primeiro comando gera somente SINAN 2020–2025 do pacote original, evitando
+reaplicar a versão antiga de 2026. O segundo gera um CSV anual separado com a
+versão nova. O INMET combina as horas antes de agregar: a semana 53 de 2025
+atravessa os dois pacotes e é recalculada sem somar médias nem duplicar linhas.
+A associação geográfica usa a mesma regra anual de proximidade. Não há imputação.
+
+O último comando apenas confere, sem conectar. Para aplicar no banco configurado:
+
+```powershell
+.venv\Scripts\python.exe -B -m backend.povoar_banco --atualizacao-2026 --aplicar
+```
+
+Esse modo atualiza SINAN 2026, estações, clima e vínculos numa transação única.
+Falha em qualquer componente reverte todos. Faz backup antes das revisões e
+confere preservação do cadastro, população, SESA e demais anos SINAN. Repetir
+a mesma carga não altera registros. Os hashes INMET/vínculos refletem o conjunto
+de pacotes combinado; fora da borda 2025/53, os valores climáticos anteriores
+foram preservados. Não há alteração de DDL.
+
+## Consultar previsões
+
+As rotas aceitam `fonte=sesa` (padrão, preservando consultas anteriores) ou
+`fonte=sinan`. Para a versão integrada de 2026, use:
+
+- `/modelo?fonte=sinan`: período, origem, estratégia, métricas e versão SINAN.
+- `/previsoes?fonte=sinan`: próxima semana após o snapshot, 01–07/11/2026.
+- `/previsoes?fonte=sinan&data_inicio=2026-10-25&codigo_municipio=320530`:
+  simulação histórica SINAN para Vitória.
+
+SINAN retorna contextos `backtest_2025`, `simulacao_2026` ou
+`projecao_apos_snapshot`, com `fim_historico=2026-10-31`. As métricas genéricas
+`validacao` e `teste` vêm com `ano_validacao=2024` e `ano_teste=2025`. Os campos
+legados `validacao_2023` e `teste_2024` só têm valores no estudo SESA. Datas
+posteriores à próxima semana disponível continuam recusadas com 422.
+Os exemplos a seguir sem `fonte` pertencem ao estudo SESA original.
+
+Depois de preparar e treinar o ML, inicie ou reinicie a API. Abra
+`http://127.0.0.1:8000/docs` e teste:
+
+- `/modelo`: mostra a estratégia efetiva e a avaliação que acompanha a estimativa.
+- `/previsoes?data_inicio=2024-02-04&codigo_municipio=320530`: simulação de uma
+  semana histórica para Vitória, com observado e previsto separados.
+- `/previsoes`: projeta a semana imediatamente seguinte ao snapshot, de
+  29/12/2024 a 04/01/2025, semana epidemiológica 1 de 2025. Essa projeção fica
+  fora do teste de 2024 e não tem desempenho aferido.
+
+O serviço permite os domingos de início das semanas epidemiológicas de 2024
+e somente a semana seguinte ao snapshot. Recusa datas de treino, dias que não
+sejam domingo e datas posteriores, inclusive semanas atuais de 2026, com HTTP
+422. O campo `contexto` distingue `backtest_2024` e `projecao_apos_snapshot`.
+`data_origem` é o sábado anterior ao alvo no protocolo simulado; não comprova
+que todos os registros revisados estavam disponíveis naquela data.
+
+Cada resposta inclui modelo, versão, dataset, fonte, referência temporal e
+limitações. Por município, informa a última contagem, a estimativa, o observado
+(quando existe) e o status. Sem as quatro semanas consecutivas de registros e
+clima qualificado, retorna `dados_insuficientes`, motivos e previsão `null`.
+Zero explícito continua zero. Não usa o clima nem a contagem do alvo como entrada.
+Não calcula taxas futuras usando uma população anual presumida.
+
+Na conferência desta execução, as 2.449 estimativas avaliáveis de 2024
+coincidiram com o arquivo do teste salvo. A projeção seguinte tem 52 municípios
+elegíveis e 26 sem dados suficientes; todos os 78 aparecem na resposta sem
+filtro municipal. A persistência repete a última contagem, sem antecipar
+crescimento; não produzimos um ranking de crescimento com essa estratégia.
+
+A API lê `ml/models/atual.json` e abre o dataset identificado na avaliação
+daquele modelo, conferindo hashes, protocolo e versões. Não usa automaticamente
+outro snapshot preparado mais recentemente. Os artefatos são carregados apenas
+no primeiro acesso às rotas de previsão e ficam fixos por processo; reinicie a
+API depois de gerar outro experimento. Sem eles, essas rotas retornam HTTP 503
+com orientação; `/health` e as consultas existentes continuam disponíveis.
+
+O serviço não consulta nem grava o PostgreSQL para gerar essas respostas.
+Cada integrante precisa reproduzir a preparação e o treinamento locais para
+usar as previsões. Os dados e modelos gerados continuam fora dos commits.
+
 ## Testes e próximos passos
 
 ```powershell
@@ -543,12 +676,15 @@ Os testes automatizados de banco usam SQLite local. A conexão, a carga e as
 consultas da API também foram verificadas diretamente no PostgreSQL da equipe.
 
 As bases SINAN e SESA estão integradas e conferidas no Supabase, com consultas
-próprias e sem mistura de contagens. A série adotada para o ML é a estadual por
-notificação em 2020–2024. A preparação e a primeira comparação temporal estão
-concluídas. A próxima etapa é o serviço de previsões com modelo, versão,
-origem e limitações explícitos. Depois seguem LLM com function calling e RAG.
+próprias e sem mistura de contagens. A integração de 2026 e a avaliação própria
+SINAN foram concluídas, mantendo a avaliação SESA de 2020–2024 e o serviço
+anterior. As previsões têm modelo, versão, origem e limitações explícitos.
+A próxima etapa é Llama via Groq com
+function calling, seguida de RAG com documentos oficiais. O acesso ao modelo
+no provedor ainda precisa ser conferido na conta que será utilizada.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).
 - [Análise inicial das fontes e limitações](docs/analise-bases.md).
 - [Inventário e hashes dos arquivos originais](docs/inventario-bases.json).
+- [Compatibilidade e avaliação SINAN 2026](docs/avaliacao-sinan-2026.md).

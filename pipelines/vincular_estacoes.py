@@ -14,7 +14,7 @@ import requests
 
 from pipelines.arquivos import sha256_arquivo
 from pipelines.etl_ibge import carregar_cadastro
-from pipelines.etl_inmet import ANOS, RESUMO_JSON as RESUMO_CLIMA, carregar_clima, gravar_csv
+from pipelines.etl_inmet import ANOS, ANOS_SUPORTADOS, RESUMO_JSON as RESUMO_CLIMA, carregar_clima, gravar_csv
 
 ROOT = Path(__file__).resolve().parents[1]
 CENTROIDES = ROOT / "data/raw/geografia/centroides_municipios_es_ibge.json"
@@ -100,7 +100,10 @@ def gerar_vinculos(cadastro, pontos, resumo_clima):
     por_codigo = {row["codigo_ibge_completo"]: row for row in pontos}
     if len(por_codigo) != len(pontos) or set(por_codigo) != {row["codigo_ibge_completo"] for row in cadastro}:
         raise ValueError("Centroides sem correspondência completa com o cadastro.")
-    disponiveis = {ano: {} for ano in ANOS}
+    anos = resumo_clima.get("anos_arquivos", ANOS)
+    if anos not in (ANOS, ANOS_SUPORTADOS):
+        raise ValueError("Período dos vínculos incompatível com os pacotes INMET conferidos.")
+    disponiveis = {ano: {} for ano in anos}
     for arquivo in resumo_clima["arquivos"]:
         ano, metadata = arquivo["ano_arquivo"], arquivo["metadados"]
         codigo = metadata["codigo"]
@@ -109,7 +112,7 @@ def gerar_vinculos(cadastro, pontos, resumo_clima):
             raise ValueError("Metadados de estação ambíguos no mesmo ano.")
         disponiveis[ano][codigo] = metadata
     registros = []
-    for ano in ANOS:
+    for ano in anos:
         if not disponiveis[ano]:
             raise ValueError(f"Nenhuma estação disponível no pacote anual {ano}.")
         for municipio in sorted(cadastro, key=lambda row: row["codigo_municipio"]):
@@ -140,7 +143,7 @@ def validar_vinculos(registros):
         chaves.add(chave)
         if (
             not re.fullmatch(r"32\d{4}", codigo) or not re.fullmatch(r"32\d{5}", completo)
-            or completo[:6] != codigo or row["ano"] not in ANOS
+            or completo[:6] != codigo or row["ano"] not in ANOS_SUPORTADOS
             or not re.fullmatch(r"A\d{3}", row["codigo_estacao"])
         ):
             raise ValueError("Identificadores ou ano inválidos no vínculo.")
@@ -172,7 +175,7 @@ def processar_vinculos():
     validar_vinculos(rows)
     digest = gravar_csv(OUTPUT_CSV, COLUNAS, rows)
     resumo = dict(
-        schema_version=1, tipo="vinculos_municipios_estacoes", linhas_saida=len(rows), anos=ANOS,
+        schema_version=1, tipo="vinculos_municipios_estacoes", linhas_saida=len(rows), anos=sorted({r["ano"] for r in rows}),
         csv_sha256=digest, fonte_geografia_sha256=PONTOS_SHA256,
         gerado_em_utc=datetime.now(timezone.utc).isoformat(), metodo=METODO,
         distancia_maxima_km=max(row["distancia_km"] for row in rows), observacao=OBSERVACAO,

@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.database import Base, DatabaseConfigurationError, get_engine
+from backend.database import Base, DatabaseConfigurationError, get_engine, transacao
 from backend.analitica import ANOS_SESA, gerar_calendario, preparar_base_analitica
 from backend.models import (
     CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, NotificacaoEstadual,
@@ -53,6 +53,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CSV = ROOT / "data/processed/dengue_semanal.csv"
 DEFAULT_SUMMARY = ROOT / "data/processed/dengue_semanal_resumo.json"
 DEFAULT_BACKUP = ROOT / "data/interim/backups"
+ATUALIZACAO_CSV = ROOT / "data/processed/atualizacao_2026/dengue_semanal.csv"
+ATUALIZACAO_RESUMO = ROOT / "data/processed/atualizacao_2026/dengue_semanal_resumo.json"
 
 
 @dataclass
@@ -167,7 +169,7 @@ def sincronizar_casos(engine, fonte, *, backup_dir=DEFAULT_BACKUP):
         municipios_inseridos=0, inseridos=0, atualizados=0,
         duplicados_removidos=0, fora_da_fonte_removidos=0, mantidos=0, backup=None,
     )
-    with engine.begin() as connection:
+    with transacao(engine) as connection:
         Base.metadata.create_all(bind=connection)
         if connection.dialect.name == "postgresql":
             # Serializa cargas e permite que leitores mantenham seu snapshot.
@@ -341,7 +343,7 @@ def sincronizar_clima(engine, fonte, *, backup_dir=DEFAULT_BACKUP):
                 resultado[campo] = valor.replace(tzinfo=timezone.utc) if valor.tzinfo is None else valor.astimezone(timezone.utc)
         return resultado
 
-    with engine.begin() as connection:
+    with transacao(engine) as connection:
         EstacaoMeteorologica.__table__.create(bind=connection, checkfirst=True)
         ClimaSemanal.__table__.create(bind=connection, checkfirst=True)
         if connection.dialect.name == "postgresql":
@@ -389,7 +391,7 @@ def sincronizar_vinculos(engine, registros, *, backup_dir=DEFAULT_BACKUP):
     tabela = VinculoMunicipioEstacao.__table__
     anos = sorted({row["ano"] for row in registros})
     campos = [column.name for column in tabela.columns if not column.primary_key]
-    with engine.begin() as connection:
+    with transacao(engine) as connection:
         if any(not inspect(connection).has_table(nome) for nome in ("municipios", "estacoes_inmet")):
             raise ValueError("Carregue primeiro os municípios e as estações INMET.")
         municipios = set(connection.execute(select(Municipio.codigo_ibge)).scalars())
@@ -464,6 +466,44 @@ def sincronizar_sesa(engine, registros, *, backup_dir=DEFAULT_BACKUP):
                 mantidos=len(registros) - len(insercoes) - len(alteracoes), backup=backup)
 
 
+def sincronizar_atualizacao_2026(engine, fonte, clima, vinculos, *, backup_dir=DEFAULT_BACKUP):
+    """Atualiza somente o SINAN 2026 e integra INMET/vínculos numa transação única."""
+    if fonte.anos != [2026] or {r["ano"] for r in fonte.registros} != {2026}:
+        raise ValueError("A carga conjunta exige uma fonte SINAN exclusiva de 2026.")
+    validar_clima(*clima)
+    validar_vinculos(vinculos)
+    if 2026 not in {r["ano"] for r in clima[1]} or 2026 not in {r["ano"] for r in vinculos}:
+        raise ValueError("A carga conjunta exige clima e vínculos de 2026.")
+    with transacao(engine) as connection:
+        def snapshot(modelo, condicao=None):
+            tabela = modelo.__table__
+            if not inspect(connection).has_table(tabela.name):
+                return []
+            query = select(tabela).order_by(*tabela.primary_key.columns)
+            if condicao is not None:
+                query = query.where(condicao)
+            return [dict(row) for row in connection.execute(query).mappings()]
+
+        protegidas = (Municipio, PopulacaoMunicipal, NotificacaoEstadual)
+        antes = {modelo: snapshot(modelo) for modelo in protegidas}
+        casos_anteriores = snapshot(CasoDengue, CasoDengue.ano != 2026)
+        codigos = {r["codigo_ibge"] for r in antes[Municipio]}
+        if not codigos or {r["codigo_ibge"] for r in fonte.registros} - codigos:
+            raise ValueError("Prepare o cadastro municipal antes da atualização de 2026.")
+        if {r["codigo_ibge"] for r in vinculos if r["ano"] == 2026} != codigos:
+            raise ValueError("Os vínculos de 2026 devem cobrir todos os municípios cadastrados.")
+        resultado = dict(
+            sinan=sincronizar_casos(connection, fonte, backup_dir=backup_dir),
+            clima=sincronizar_clima(connection, clima, backup_dir=backup_dir),
+            vinculos=sincronizar_vinculos(connection, vinculos, backup_dir=backup_dir),
+        )
+        if any(snapshot(modelo) != antes[modelo] for modelo in protegidas):
+            raise ValueError("Cadastro, população ou notificações SESA foram alterados; atualização revertida.")
+        if snapshot(CasoDengue, CasoDengue.ano != 2026) != casos_anteriores:
+            raise ValueError("SINAN de outros anos foi alterado; atualização revertida.")
+    return resultado
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
@@ -476,11 +516,25 @@ def main(argv=None):
     modo.add_argument("--analitica", action="store_true", help="Prepara o calendário e a visão integrada, preservando as fontes.")
     modo.add_argument("--sesa", action="store_true", help="Confere ou carrega somente a série estadual por notificação.")
     modo.add_argument("--analitica-sesa", action="store_true", help="Prepara a visão estadual integrada de 2020–2024.")
+    modo.add_argument("--atualizacao-2026", action="store_true", help="Sincroniza SINAN 2026, clima e vínculos em transação única.")
     parser.add_argument("--estacoes", type=Path, default=ESTACOES_CSV, help="CSV de estações, utilizado no modo --clima.")
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP)
     parser.add_argument("--aplicar", action="store_true", help="Sincroniza o banco configurado em DATABASE_URL.")
     args = parser.parse_args(argv)
     try:
+        if args.atualizacao_2026:
+            fonte = carregar_fonte(args.input or ATUALIZACAO_CSV, args.resumo or ATUALIZACAO_RESUMO)
+            clima = carregar_clima(caminho_estacoes=args.estacoes)
+            vinculos = carregar_vinculos()
+            if fonte.anos != [2026]:
+                raise ValueError("Informe o CSV anual de 2026, separado do histórico original.")
+            print(f"Atualização validada: {len(fonte.registros)} agregados SINAN; {len(clima[1])} semanas de estação; {len(vinculos)} vínculos.")
+            if not args.aplicar:
+                print("Conferência concluída sem conexão. Use --aplicar para a carga conjunta com backup e transação.")
+                return 0
+            resultado = sincronizar_atualizacao_2026(get_engine(), fonte, clima, vinculos, backup_dir=args.backup_dir)
+            print(json.dumps(resultado, ensure_ascii=False, indent=2))
+            return 0
         if args.analitica or args.analitica_sesa:
             if args.input or args.resumo:
                 raise ValueError("O modo --analitica consulta as tabelas; não recebe CSV ou resumo.")
@@ -512,6 +566,8 @@ def main(argv=None):
             print(f"Cadastro nominal validado: {len(fonte)} municípios; população preservada.")
         else:
             fonte = carregar_fonte(args.input or DEFAULT_CSV, args.resumo or DEFAULT_SUMMARY)
+            if args.input is None and 2026 in fonte.anos:
+                raise ValueError("Regere o histórico com pipelines.etl_sinan (2020–2025). Atualize 2026 pelo modo --atualizacao-2026 para não restaurar a extração antiga.")
             print(f"Fonte validada: {len(fonte.registros)} linhas; "
                   f"{sum(r['quantidade_casos'] for r in fonte.registros)} registros; anos {fonte.anos}.")
         if not args.aplicar:

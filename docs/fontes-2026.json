@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "sinan": {
+    "arquivo": "DENGBR26.csv.zip",
+    "bytes": 15864337,
+    "sha256": "0c9ba29ff33573431b5198949c982a285b7233f26c09ef81dbb068460775e909",
+    "url": "https://s3.sa-east-1.amazonaws.com/ckan.saude.gov.br/SINAN/Dengue/csv/DENGBR26.csv.zip"
+  },
+  "inmet": {
+    "arquivo": "2026.zip",
+    "bytes": 81772595,
+    "sha256": "e50640dee9556273fcdf02874fc88518c5a82a377e3780eb0fcdf202cb9006fd",
+    "url": "https://portal.inmet.gov.br/uploads/dadoshistoricos/2026.zip"
+  }
+}

@@ -1,6 +1,7 @@
 """Formato JSON das respostas da API; a estrutura SQL fica em models.py."""
 
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
 
@@ -218,3 +219,61 @@ class ClimaResponse(BaseModel):
     @property
     def cobertura_umidade_pct(self) -> float:
         return round(100 * self.horas_umidade / self.horas_previstas, 2)
+
+
+class MetricasPrevisaoResponse(BaseModel):
+    mae: float = Field(ge=0, allow_inf_nan=False)
+    rmse: float = Field(ge=0, allow_inf_nan=False)
+    exemplos: int = Field(gt=0)
+
+
+class ModeloPrevisaoResponse(BaseModel):
+    modelo: str
+    familia: Literal["persistencia", "random_forest", "gradient_boosting"]
+    descricao_metodo: str
+    versao: str
+    dataset_id: str
+    natureza: Literal["estudo_retrospectivo"]
+    fonte_serie: Literal["sesa_esus_vs", "sinan"]
+    data_referencia_registros: Literal["DATA_NOTIFICACAO", "DT_SIN_PRI"]
+    tipo_numerador: Literal["registros_notificados_sesa", "registros_notificados_sinan"]
+    horizonte_semanas: int
+    janela_semanas: int
+    cobertura_minima_clima_pct: float
+    inicio_historico: date
+    fim_historico: date
+    fim_periodo_desenvolvimento: date
+    inicio_alvos_disponiveis: date
+    fim_alvos_disponiveis: date
+    validacao_2023: MetricasPrevisaoResponse | None = None
+    teste_2024: MetricasPrevisaoResponse | None = None
+    ano_validacao: int = 2023
+    ano_teste: int = 2024
+    validacao: MetricasPrevisaoResponse | None = None
+    teste: MetricasPrevisaoResponse | None = None
+    limitacoes: list[str]
+
+
+class PrevisaoMunicipalResponse(BaseModel):
+    codigo_ibge: str
+    nome_municipio: str
+    status: Literal["disponivel", "dados_insuficientes"]
+    motivos: list[Literal["historico_incompleto", "clima_insuficiente"]]
+    registros_previstos: float | None = Field(ge=0, allow_inf_nan=False)
+    registros_ultima_semana: int | None = Field(ge=0)
+    registros_observados: int | None = Field(ge=0)
+    historico_completo: bool
+    clima_qualificado: bool
+
+
+class PrevisoesResponse(BaseModel):
+    modelo: ModeloPrevisaoResponse
+    contexto: Literal["backtest_2024", "backtest_2025", "simulacao_2026", "projecao_apos_snapshot"]
+    ano: int
+    semana_epidemiologica: int
+    data_inicio: date
+    data_fim: date
+    data_origem: date
+    total_municipios: int
+    municipios_com_previsao: int
+    resultados: list[PrevisaoMunicipalResponse]

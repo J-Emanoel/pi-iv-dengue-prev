@@ -48,9 +48,9 @@ no pacote de cada ano. Distância, coordenadas e método ficam registrados.
 Essa aproximação ainda exige avaliação de representatividade meteorológica;
 não corresponde a uma medição direta do clima municipal.
 
-O período comum recebido é 2020–2025, com limitações documentadas na análise.
-O SINAN de 2026 é parcial e não há INMET de 2026 no pacote. A divisão temporal
-do ML será escolhida após a validação da base.
+O pacote original contém clima até 2025. Os ZIPs adicionais recebidos em
+18/11/2026 acrescentaram SINAN e INMET até 31/10/2026; o ano permanece parcial.
+Os experimentos temporais SINAN e SESA têm protocolos próprios documentados.
 
 ## Componentes previstos
 
@@ -80,8 +80,17 @@ O cadastro nominal IBGE foi implementado e aplicado no Supabase com backup;
 a população por município/ano, o clima INMET e a base analítica também foram
 integrados e conferidos. A comparação de fontes foi executada e encontrou uma
 série estadual adicional, adotada e carregada separadamente no Supabase.
-A primeira avaliação temporal foi executada. A próxima etapa é disponibilizar
-o serviço de previsões com estratégia, versão e limitações explícitas.
+A primeira avaliação temporal e o serviço de previsões do estudo histórico
+estão implementados, com estratégia, versão e limitações explícitas.
+A próxima etapa é integrar Llama via Groq com function calling.
+
+Atualização de 18/11/2026: os pacotes adicionais SINAN e INMET foram integrados
+em transação única no Supabase. O SINAN soma agora 363.957 registros em 11.844
+agregados; clima e vínculos somam 4.346 e 546 linhas. Cadastro, população,
+SESA e SINAN 2020–2025 foram preservados. Uma avaliação SINAN independente
+usa treino 2020–2023, validação 2024 e teste 2025, com aplicação até 31/10/2026.
+`/modelo?fonte=sinan` e `/previsoes?fonte=sinan` usam essa versão, mantendo
+as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-sinan-2026.md).
 
 - [x] C1 e C2 entregues.
 - [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
@@ -89,14 +98,15 @@ o serviço de previsões com estratégia, versão e limitações explícitas.
 - [x] População por município/ano com 546 referências documentadas no Supabase.
 - [x] Indicador descritivo de registros da extração por 100 mil habitantes, com referência populacional anual.
 - [ ] Validação da cobertura epidemiológica e das restrições de interpretação dos resultados.
-- [x] ETL INMET e carga no Supabase: 13 estações e 3.873 registros semanais.
-- [x] Associação geográfica anual: 468 vínculos com distância, método e referências.
+- [x] ETL INMET e carga no Supabase: 13 estações e 4.346 registros semanais.
+- [x] Associação geográfica anual: 546 vínculos com distância, método e referências.
 - [ ] Avaliação da cobertura dos sensores e da representatividade dos vínculos.
 - [x] Base analítica integrada no Supabase, calendário completo e consultas de indicadores/cobertura na API.
 - [x] Comparação reproduzível SINAN/SESA pela mesma data e diagnóstico de continuidade/clima.
 - [x] SESA por notificação em 2020–2024 adotada para o ML, importada com fonte/data/versões explícitas.
 - [x] Exemplos temporais preparados e primeira comparação de persistência, Random Forest e Gradient Boosting executada.
-- [ ] Serviço de previsões pela API, com fonte, estratégia selecionada e limitações.
+- [x] Serviço de previsões pela API para o estudo histórico, com fonte, estratégia selecionada e limitações.
+- [x] SINAN e INMET 2026 integrados com backup/transação e avaliação ML própria, sem mistura com SESA.
 - [ ] LLM com function calling e RAG fundamentado em documentos.
 - [ ] Interface React/Vite integrada e aplicação publicada e testada.
 
@@ -104,14 +114,14 @@ o serviço de previsões com estratégia, versão e limitações explícitas.
 
 - ZIP original preservado, com inventário e hashes; dados grandes fora do Git.
 - ETL SINAN por município de residência e ano/semana epidemiológica.
-- PostgreSQL no Supabase com 78 municípios, 11.679 linhas agregadas e 362.712
+- PostgreSQL no Supabase com 78 municípios, 11.844 linhas agregadas e 363.957
   registros, conferidos contra a fonte corrigida; chave única sem duplicações.
 - Carga com validação, backup, transação e repetição sem duplicar registros.
 - API FastAPI com `/health`, `/municipios` e `/casos`, incluindo filtros.
 - Cadastro IBGE com os 78 nomes oficiais; `/casos` inclui `nome_municipio`.
 - Populações de 2020 a 2026 com origem, data de referência e tipo, consultáveis
   em `/populacoes`; casos, IDs e cadastro preservados após a carga.
-- Clima de 2020–2025 em `/clima` e catálogo em `/estacoes`, com horas válidas,
+- Clima de 2020–2026 em `/clima` e catálogo em `/estacoes`, com horas válidas,
   cobertura por sensor, fuso e origem; ausência diferenciada de zero.
 - Vínculos municipais por ano em `/vinculos-estacoes`, usando centroides IBGE
   e metadados anuais INMET; adequação meteorológica ainda não validada.
@@ -122,6 +132,8 @@ o serviço de previsões com estratégia, versão e limitações explícitas.
   registros. Visão `base_analitica_sesa` com 20.358 combinações em 2020–2024,
   consultável em `/base-sesa` e `/cobertura-sesa`, sem modificar a série SINAN.
 - Streamlit consumindo a API e testes automatizados da inspeção, ETL, carga e API.
+- `/modelo` e `/previsoes` usam o experimento local conferido; preservam ausência
+  e zero, informam elegibilidade e recusam previsões atuais sem dados recentes.
 - Credenciais locais em `.env`, ignoradas pelo Git; exemplo fictício versionado.
 
 ### O que falta
@@ -132,7 +144,7 @@ o serviço de previsões com estratégia, versão e limitações explícitas.
 | 2. População e indicador descritivo concluídos | Registros da extração por 100 mil habitantes; alvo do ML definido como notificações estaduais. | Referências anuais preservadas; limitações de cobertura explícitas na avaliação. |
 | 3. Clima integrado; adequação pendente | ETL e vínculo geográfico implementados; falta definir critérios de uso dos sensores e das distâncias. | Cobertura verificável e limites de uso documentados antes do ML. |
 | 4. Base analítica e backend — concluído | Calendário semanal e visão integrada no Supabase; consultas de indicadores e presença das fontes. | 28.548 chaves únicas, contagens preservadas e ausência diferenciada de zero; conferido no PostgreSQL. |
-| 5. Machine Learning — primeira avaliação concluída | Persistência, Random Forest e Gradient Boosting comparados; falta serviço de previsões. | Resultado e limitações documentados; persistência selecionada nesta rodada. |
+| 5. Machine Learning e serviço — implementados | Experimentos SESA e SINAN separados, com consultas por fonte e período. | Resultados e limitações documentados; persistência selecionada, sem ganho sobre a referência. |
 | 6. LLM/function calling | Assistente consultando funções reais do backend. | Respostas conferidas contra resultados das funções, com parâmetros validados. |
 | 7. RAG | Consulta a documentos oficiais com recuperação de trechos e referências. | Fontes rastreáveis e avaliação de respostas fundamentadas. |
 | 8. Interface web e publicação | React/Vite em `frontend/`, integração e publicação dos serviços. | Fluxo completo testado no ambiente publicado, com configuração documentada. |
@@ -196,6 +208,10 @@ O campo `nome` já existe; essa entrega não exige alterar o esquema SQL.
 - ZIP e credenciais preservados e ausentes do versionamento.
 
 ### Decisões e dependências das etapas seguintes
+
+O relato abaixo registra as etapas anteriores à atualização de 18/11/2026.
+Os números correntes e a integração SINAN/INMET 2026 estão no checklist e em
+[avaliacao-sinan-2026.md](avaliacao-sinan-2026.md).
 
 **Indicadores e cobertura:** a contagem atual inclui todas as classificações
 da fonte. Definir se o alvo final representa registros notificados, casos
@@ -432,8 +448,31 @@ Na estratégia selecionada, o clima delimita a amostra, mas a previsão repete
 a última contagem. Isso limita o uso para tendências e rankings de crescimento
 estimado. A apresentação e o serviço devem explicitar a estratégia efetiva.
 O teste de 2024 já foi consultado; novas hipóteses precisam de protocolo
-documentado, sem otimização sobre esse teste. O serviço de previsões ainda
-será implementado, antes da LLM/RAG e da interface definitiva.
+documentado, sem otimização sobre esse teste.
+
+**Serviço de previsões implementado:** `backend/previsoes.py` carrega o modelo
+e o snapshot da mesma execução, confere hashes, protocolo e versões e reutiliza
+a preparação/inferência do ML. A API 0.8.0 expõe `/modelo` e `/previsoes` sem
+consultar ou escrever no banco para essas rotas. O carregamento é tardio; os
+artefatos ficam fixos por processo até reiniciar a API.
+
+As consultas aceitam as semanas de teste de 2024 e uma projeção para a semana
+imediatamente seguinte ao snapshot: 29/12/2024 a 04/01/2025, semana epidemiológica
+1 de 2025. Esta última não faz parte das métricas do teste. O calendário do
+alvo é acrescentado somente em memória, sem inventar notificações, clima ou
+população futura. Não são oferecidas previsões atuais de 2026.
+
+As 2.449 estimativas avaliáveis do backtest coincidiram com o arquivo salvo
+do experimento. Na projeção seguinte, 52 municípios têm as quatro semanas
+qualificadas e 26 ficam com estimativa nula e motivo de insuficiência. Cada
+resposta informa fonte, versão, datas, contexto e limitações. A persistência
+continua sendo a estratégia selecionada; o serviço não altera a avaliação nem
+gera ranking de crescimento com uma referência que repete a última contagem.
+
+Os dados e modelos permanecem ignorados pelo Git. Cada integrante pode
+reproduzi-los com os dois comandos de preparação/treinamento do README. Sem
+artefatos compatíveis, as rotas de previsão respondem 503 e orientam a geração,
+enquanto as consultas ao banco e `/health` permanecem independentes.
 
 **LLM e RAG:** conectar o assistente aos serviços implementados para consultar
 histórico, indicadores e previsões. Cálculos permanecem no backend; a LLM
@@ -448,10 +487,17 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 
 ### Continuidade até a entrega final
 
-A prioridade atual é implementar o serviço de previsões usando a avaliação
-registrada e suas limitações. A interpretação deve respeitar lacunas, seleção
-de amostras e revisões históricas. Em seguida, completar assistente, RAG,
-interface e publicação.
+A atualização 2026 está aplicada e conferida. A referência é 31/10/2026 e a
+projeção disponível é 01–07/11/2026 para 15 municípios elegíveis; 63 retornam
+estimativa nula com motivo. Persistência continua selecionada, sem ganho
+demonstrado sobre a referência. O estudo SESA e seus artefatos permanecem
+preservados. A integração LLM deverá consultar fonte e datas explicitamente.
+
+A prioridade atual é integrar o assistente Llama via Groq aos serviços de dados
+e previsões com function calling. É preciso conferir o acesso ao modelo na
+conta do provedor antes de habilitar a integração real. A interpretação deve
+respeitar lacunas, seleção de amostras e revisões históricas. Em seguida,
+completar RAG, interface e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
 
 ## Acompanhar a implementação

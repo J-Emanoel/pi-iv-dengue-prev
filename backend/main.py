@@ -1,6 +1,8 @@
 """Rotas HTTP: recebem filtros e devolvem os agregados consultados no banco."""
 
-from fastapi import Depends, FastAPI, Query
+from datetime import date
+
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -10,12 +12,16 @@ from backend.database import DatabaseConfigurationError, get_db
 from backend.models import (
     CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, PopulacaoMunicipal, VinculoMunicipioEstacao,
 )
+from backend.previsoes import (
+    ConsultaPrevisaoError, PrevisaoIndisponivelError, ServicoPrevisoes, get_servico_previsoes,
+)
 from backend.schemas import (
     BaseAnaliticaResponse, BaseSesaResponse, CasoResponse, ClimaResponse, CoberturaResponse, CoberturaSesaResponse,
-    EstacaoResponse, MunicipioResponse, PopulacaoResponse, VinculoEstacaoResponse,
+    EstacaoResponse, ModeloPrevisaoResponse, MunicipioResponse, PopulacaoResponse,
+    PrevisoesResponse, VinculoEstacaoResponse,
 )
 
-app = FastAPI(title="API DenguePrev - ES", version="0.7.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.9.0")
 
 
 @app.exception_handler(DatabaseConfigurationError)
@@ -26,6 +32,11 @@ def configuration_error(request, exc):
 @app.exception_handler(SQLAlchemyError)
 def database_error(request, exc):
     return JSONResponse(status_code=503, content={"detail": "Banco indisponível ou esquema não preparado."})
+
+
+@app.exception_handler(PrevisaoIndisponivelError)
+def prediction_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.get("/")
@@ -201,3 +212,22 @@ def listar_cobertura_sesa(
     if codigo_municipio is not None:
         query = query.where(tabela.codigo_ibge == codigo_municipio)
     return db.execute(query.order_by(tabela.ano, tabela.codigo_ibge)).mappings().all()
+
+
+@app.get("/modelo", response_model=ModeloPrevisaoResponse, tags=["Previsões"])
+def consultar_modelo(servico: ServicoPrevisoes = Depends(get_servico_previsoes)):
+    """Estratégia efetiva, versão, período, métricas e limites do experimento local."""
+    return servico.modelo
+
+
+@app.get("/previsoes", response_model=PrevisoesResponse, tags=["Previsões"])
+def listar_previsoes(
+    data_inicio: date | None = Query(default=None, description="Domingo inicial da semana alvo. Sem filtro, usa a semana seguinte ao snapshot histórico."),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    servico: ServicoPrevisoes = Depends(get_servico_previsoes),
+):
+    """Estudo da fonte escolhida e projeção seguinte ao snapshot; consulte a data máxima dos dados."""
+    try:
+        return servico.consultar(data_inicio=data_inicio, codigo_municipio=codigo_municipio)
+    except ConsultaPrevisaoError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
