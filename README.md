@@ -23,9 +23,31 @@ também já foi carregado: 13 estações, 3.873 registros semanais e 468 víncul
 município/ano por proximidade geográfica. As consultas foram conferidas contra
 as fontes e repetir as cargas não alterou os dados.
 
-Agora faltam a avaliação da cobertura e dos indicadores e a base analítica
-integrada. O vínculo geográfico é uma aproximação: não comprova que uma estação
-represente o clima de todo o município. O pacote não contém clima de 2026.
+A base integrada também está preparada no Supabase: a visão
+`base_analitica_semanal` contém 28.548 combinações de município e semana em
+2020–2026, sobre um calendário com 366 semanas. Mantém as 11.679 linhas SINAN
+e os 362.712 registros; as demais semanas ficam ausentes, sem preencher com zero.
+As seis tabelas de origem foram preservadas e as junções conferidas integralmente.
+
+O indicador implementado é **registros notificados da extração por 100 mil
+habitantes**, usando a população do respectivo ano. O alvo escolhido para o ML
+é o registro estadual por semana de notificação; a avaliação de cobertura e
+suas restrições de interpretação continuam documentadas como pendentes.
+O vínculo geográfico é uma aproximação: não comprova que uma estação represente
+o clima de todo o município. O pacote não contém clima de 2026.
+
+A série SESA de 2020–2024 por semana de notificação foi adotada para o ML e já
+está no Supabase, separada do SINAN: `notificacoes_sesa` contém 13.290 agregados
+e 521.193 registros. A visão `base_analitica_sesa` tem 20.358 combinações de
+município/semana; 7.068 ficam sem registro, preservadas como nulas. As fontes,
+referências e limitações ficam explícitas. A carga foi comparada integralmente
+com a saída validada, e sua repetição resultou em zero alterações.
+
+O SINAN permanece como referência em suas tabelas, visão e rotas atuais.
+O Streamlit provisório continua exibindo esse histórico SINAN. A série estadual
+está disponível nas novas consultas `/base-sesa` e `/cobertura-sesa`.
+O próximo passo é preparar os exemplos temporais e treinar/avaliar os modelos.
+As decisões ficam no [contexto do projeto](docs/contexto-projeto.md#comparação-de-fontes-e-proposta-para-o-ml).
 
 A conexão real fica somente no `.env` local, ignorado pelo Git. O
 `.env.example` contém valores fictícios; cada participante configura seu acesso
@@ -52,8 +74,10 @@ Ausência de registro não foi convertida em zero.
 | `pipelines/etl_populacao.py` | Consolida referências populacionais por município/ano e registra a origem. |
 | `pipelines/etl_inmet.py` | Lê as estações ES dos ZIPs anuais e agrega clima com cobertura por sensor. |
 | `pipelines/vincular_estacoes.py` | Usa centroides IBGE para escolher a estação mais próxima em cada pacote anual. |
+| `pipelines/avaliar_fontes.py` | Obtém e compara microdados SESA/SINAN por notificação e valida a série estadual para carga. |
 | `backend/database.py` | Configura a conexão PostgreSQL a partir do ambiente. |
 | `backend/models.py` | Define tabelas, colunas, relacionamentos e restrições SQL. |
+| `backend/analitica.py` | Gera o calendário, define a visão integrada e calcula o diagnóstico de presença das fontes. |
 | `backend/povoar_banco.py` | Confere a fonte e sincroniza os agregados com o banco. |
 | `backend/main.py` | Disponibiliza as consultas pela API FastAPI. |
 | `backend/schemas.py` | Define o formato JSON das respostas da API. |
@@ -294,6 +318,74 @@ fora da fonte no período coberto interrompem a carga para revisão. Casos,
 nomes e populações existentes são preservados. Esta carga já foi aplicada e
 conferida no Supabase compartilhado; não é necessário repeti-la para usar a API.
 
+Para preparar a base analítica após carregar as fontes:
+
+```powershell
+.venv\Scripts\python.exe -B -m backend.povoar_banco --analitica
+.venv\Scripts\python.exe -B -m backend.povoar_banco --analitica --aplicar
+```
+
+O primeiro comando confere o calendário sem conectar. O segundo acrescenta
+366 linhas em `calendario_epidemiologico` e cria a visão `base_analitica_semanal`
+em uma transação. A tabela de calendário é definida em `backend/models.py`;
+a consulta da visão fica em `backend/analitica.py`, e seu SQL é gerado pelo
+SQLAlchemy. Não há outro arquivo manual reproduzindo essas definições.
+
+A visão consulta as tabelas de origem a cada acesso, sem manter uma cópia física
+dos resultados. Revisões nas fontes aparecem nela automaticamente. Repetir a
+preparação não duplica o calendário nem modifica as fontes. Datas de calendário
+divergentes ou perda/multiplicação das contagens interrompem a preparação.
+No PostgreSQL 15 ou superior, usa `security_invoker` para respeitar as permissões
+de quem consulta as tabelas. [Documentação de visões PostgreSQL](https://www.postgresql.org/docs/current/sql-createview.html).
+
+A integração usa município, ano e semana epidemiológica; população e vínculo
+são associados pelo respectivo ano. Cada linha mantém as referências
+populacionais, estação, método/distância do vínculo e cobertura dos sensores.
+`registros_notificados = null` indica ausência na extração; zero exige uma
+linha com zero explicitamente gravada na origem. Sem registros ou denominador,
+`registros_por_100_mil` permanece nulo. O campo legado `municipios.populacao`
+não participa desse cálculo.
+
+`cobertura_epidemiologica_validada` e `representatividade_climatica_validada`
+permanecem falsos. 2026 é identificado como fonte SINAN parcial; seu calendário
+completo permite visualizar lacunas, inclusive após os últimos registros do
+pacote, sem apresentar essas semanas como observações completas.
+
+Para uma consulta no SQL Editor do Supabase:
+
+```sql
+SELECT nome_municipio, ano, semana_epidemiologica,
+       registros_notificados, registros_por_100_mil,
+       precipitacao_mm, cobertura_precipitacao_pct
+FROM public.base_analitica_semanal
+WHERE codigo_ibge = '320530' AND ano = 2025
+ORDER BY semana_epidemiologica;
+```
+
+Para conferir e carregar a série estadual, após executar a comparação de fontes:
+
+```powershell
+.venv\Scripts\python.exe -B -m backend.povoar_banco --sesa
+.venv\Scripts\python.exe -B -m backend.povoar_banco --sesa --aplicar
+.venv\Scripts\python.exe -B -m backend.povoar_banco --analitica-sesa --aplicar
+```
+
+O modo `--sesa` valida CSV, resumo, totais anuais, cadastro e versões dos três
+arquivos públicos. Com `--aplicar`, sincroniza somente `notificacoes_sesa` em
+transação, com backup antes de revisões. Cada agregado registra a referência
+`DATA_NOTIFICACAO`, a URL oficial e os hashes do conjunto de fontes e do CSV.
+Chaves antigas fora da fonte no período coberto interrompem a carga para revisão.
+
+O modo `--analitica-sesa` prepara a visão estadual com 261 semanas em 2020–2024,
+usando as mesmas regras de população e vínculo/clima anuais. Sem `--aplicar`,
+somente confere o calendário. A estrutura física está em `backend/models.py`;
+as duas visões são geradas em `backend/analitica.py`, com fonte explícita.
+SINAN e SESA nunca são somados ou usados para preencher lacunas um do outro.
+
+Essa carga e a visão estadual já foram aplicadas e conferidas no Supabase.
+Para consultar a série adotada para o ML, use `public.base_analitica_sesa`,
+por exemplo com o mesmo filtro municipal/ano do SQL anterior.
+
 ## Executar API e dashboard
 
 API, em um terminal na raiz:
@@ -315,11 +407,36 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
   filtros opcionais `ano`, `codigo_estacao` e `semana`.
 - `GET /vinculos-estacoes`: associação geográfica, distância, referências e
   limitações, com filtros opcionais `ano` e `codigo_municipio`.
+- `GET /base-analitica`: calendário e fontes integradas, com filtros `ano`,
+  `codigo_municipio` e `semana`. Retorna até 500 linhas por padrão; use `limite`
+  (máximo 5.000) e `deslocamento` para paginar, na ordem de data e código municipal.
+- `GET /cobertura`: diagnóstico por município/ano, com filtros `ano` e
+  `codigo_municipio`. Informa semanas com/sem registros, presença de população,
+  vínculo, clima e cobertura horária dos três sensores.
+- `GET /base-sesa`: série estadual de 2020–2024 por notificação com população,
+  clima e versões, usando os mesmos filtros e paginação de `/base-analitica`.
+- `GET /cobertura-sesa`: diagnóstico da série estadual, com filtros `ano`,
+  `codigo_municipio` e `cobertura_minima_clima_pct`.
 
 Exemplo: `/vinculos-estacoes?ano=2025&codigo_municipio=320530` retorna o vínculo
 de Vitória à estação A612, a aproximadamente 1,248 km do centroide municipal.
 `/clima?ano=2025&codigo_estacao=A612` consulta suas observações e coberturas.
 Essas medidas são da estação, sem atribuição de medição municipal direta.
+
+Exemplos integrados:
+
+- `/base-analitica?ano=2025&codigo_municipio=320530`: 53 semanas de Vitória.
+- `/cobertura?ano=2025&codigo_municipio=320530&cobertura_minima_clima_pct=80`:
+  diagnóstico com pelo menos 80% das 168 horas válidas em cada sensor.
+- `/base-sesa?ano=2024&codigo_municipio=320530`: as 52 semanas de Vitória
+  na série estadual, com `fonte_serie=sesa_esus_vs` e referência explícita.
+
+O limiar de clima é ajustável de 0 a 100 e tem padrão exploratório de 80%, sem
+valor normativo ou seleção automática para ML. Mesmo com limiar zero, é exigida
+ao menos uma medição válida por sensor. `presenca_semanas_sinan_pct` mede somente
+semanas com alguma linha na extração, não a proporção dos casos reais capturados.
+`semanas_com_fontes_e_cobertura` conta coincidências técnicas de registros,
+população e sensores acima do limiar; não valida completude ou aptidão preditiva.
 
 Dashboard, em outro terminal na raiz:
 
@@ -328,6 +445,52 @@ Dashboard, em outro terminal na raiz:
 ```
 
 O dashboard consulta a API e renova o cache a cada 60 segundos.
+
+## Comparar fontes antes do ML
+
+Além do recurso mensal do catálogo estadual, a [página oficial de microdados
+SESA](https://app.wiki.saude.es.gov.br/pt-br/vigilanciasaude/sistema-de-informacao-e-dados/microdados)
+oferece arquivos individuais de dengue. Foram analisados os pacotes de
+2020–2022, 2023 e 2024. As entradas de 2025 e 2026 não têm link nessa página
+na versão consultada em 17/11/2026.
+
+```powershell
+.venv\Scripts\python.exe -B -m pipelines.avaliar_fontes --baixar
+```
+
+O comando reutiliza arquivos locais quando seus hashes conferem. Sem
+`--baixar`, usa apenas os arquivos já presentes em `data/raw/sesa/`.
+Requer também o cadastro, clima e vínculos gerados nas etapas anteriores.
+As versões dos três arquivos estaduais estão fixadas por tamanho e SHA-256
+no código. Uma alteração da publicação exige revisão da referência.
+
+O processamento lê os sete pacotes SINAN recebidos e os três arquivos SESA,
+compara residentes do ES com códigos conhecidos e usa **data de notificação
+nas duas fontes**. A série atual do banco, por primeiros sintomas, permanece
+como estava. Não somamos fontes nem estimamos uma taxa de cobertura a partir
+de suas diferenças; universos, revisões e datas de extração também diferem.
+
+Saídas locais, fora do Git:
+
+- `data/processed/avaliacao_fontes_resumo.json`: versões, critérios, exclusões,
+  presença semanal e diagnóstico de continuidade para o ML.
+- `data/processed/comparacao_fontes_mensal.csv`: totais por mês de notificação.
+- `data/processed/sesa_notificacoes_semanais_candidata.csv`: 13.290 agregados
+  por município e semana de notificação, somando 521.193 registros em 2020–2024.
+
+O resumo distingue ano-calendário dos meses e ano epidemiológico das semanas.
+O agregado estadual não é aceito pelo carregador SINAN; tem modo próprio `--sesa`. O script de comparação não
+conecta ao banco, não modifica fontes e não exporta identificadores individuais.
+Mantém semanas ausentes e informa códigos inválidos e identificadores repetidos,
+sem deduplicação automática.
+
+A definição adotada para a série estadual é prever registros notificados uma semana à
+frente, usando quatro semanas anteriores: treino em 2020–2022, validação em
+2023 e teste em 2024. O diagnóstico exige continuidade sem inventar zeros e,
+para os exemplos com clima, pelo menos 80% de horas válidas em cada variável
+das quatro semanas anteriores. O clima da semana futura não seleciona esses
+exemplos. O limiar é exploratório, e a seleção de semanas observadas precisa
+ser documentada ao interpretar as métricas. Nenhum modelo foi treinado nesta etapa.
 
 ## Testes e próximos passos
 
@@ -338,9 +501,11 @@ O dashboard consulta a API e renova o cache a cada 60 segundos.
 Os testes automatizados de banco usam SQLite local. A conexão, a carga e as
 consultas da API também foram verificadas diretamente no PostgreSQL da equipe.
 
-As próximas etapas são avaliação de cobertura, definição dos indicadores e
-consolidação da base analítica, seguidas de ML com validação temporal, LLM com
-function calling e RAG.
+As bases SINAN e SESA estão integradas e conferidas no Supabase, com consultas
+próprias e sem mistura de contagens. A série adotada para o ML é a estadual por
+notificação em 2020–2024. A próxima etapa é preparar as variáveis temporais,
+comparar a previsão de referência com os modelos e avaliar os resultados.
+Depois seguem serviço de previsões, LLM com function calling e RAG.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).

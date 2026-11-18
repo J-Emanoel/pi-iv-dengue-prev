@@ -28,14 +28,19 @@ API e interface.
 
 ## Dados
 
-As fontes previstas são SINAN, INMET e IBGE, baixadas previamente e processadas
-localmente. A unidade principal é município, ano e semana epidemiológica.
+As fontes iniciais são SINAN, INMET e IBGE. A avaliação posterior acrescentou
+os microdados públicos SESA/e-SUS VS, adotados para o ML em 2020–2024 por semana
+de notificação. O SINAN é preservado separadamente por primeiros sintomas.
+As fontes são processadas localmente; a unidade principal é município, ano e semana epidemiológica.
 O código IBGE é a chave municipal; nomes isolados não são uma chave suficiente.
 Dados individuais de dengue serão agregados antes de alimentar a aplicação.
 
-A incidência será `(casos / populacao) * 100000`, respeitando a definição do
-numerador e a referência do denominador. Ainda é necessário escolher entre
-notificações, prováveis ou confirmados para definir `casos`.
+O indicador disponível é `registros_por_100_mil`, calculado como
+`registros_notificados / populacao_anual * 100000`. Ele descreve os registros
+da extração recebida, sem filtro por classificação. Não é apresentado como
+incidência de casos confirmados. O alvo escolhido para o ML é o registro SESA
+por semana de notificação. A conciliação da cobertura continua pendente e
+limita a interpretação dos resultados à extração observada.
 
 Estações INMET são entidades próprias. O vínculo geográfico anual usa o
 centroide oficial do município e a estação ES mais próxima entre as presentes
@@ -72,18 +77,25 @@ nem alertas oficiais de saúde.
 
 O desenvolvimento segue para a entrega final, conforme a orientação recebida.
 O cadastro nominal IBGE foi implementado e aplicado no Supabase com backup;
-a população por município/ano e o clima INMET também foram integrados e
-conferidos. As próximas pendências são cobertura, indicadores e a base analítica.
+a população por município/ano, o clima INMET e a base analítica também foram
+integrados e conferidos. A comparação de fontes foi executada e encontrou uma
+série estadual adicional, adotada e carregada separadamente no Supabase.
+A próxima etapa é preparar as variáveis temporais e avaliar os modelos,
+respeitando os critérios de uso e limitações documentados.
 
 - [x] C1 e C2 entregues.
 - [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
 - [x] Cadastro IBGE com 78 nomes reais, correspondência de códigos e nomes na API/Streamlit.
 - [x] População por município/ano com 546 referências documentadas no Supabase.
-- [ ] Definição dos indicadores e validação da cobertura epidemiológica.
+- [x] Indicador descritivo de registros da extração por 100 mil habitantes, com referência populacional anual.
+- [ ] Validação da cobertura epidemiológica e das restrições de interpretação dos resultados.
 - [x] ETL INMET e carga no Supabase: 13 estações e 3.873 registros semanais.
 - [x] Associação geográfica anual: 468 vínculos com distância, método e referências.
 - [ ] Avaliação da cobertura dos sensores e da representatividade dos vínculos.
-- [ ] Base analítica integrada e consultas de indicadores no backend.
+- [x] Base analítica integrada no Supabase, calendário completo e consultas de indicadores/cobertura na API.
+- [x] Comparação reproduzível SINAN/SESA pela mesma data e diagnóstico de continuidade/clima.
+- [x] SESA por notificação em 2020–2024 adotada para o ML, importada com fonte/data/versões explícitas.
+- [ ] Preparação dos exemplos temporais, previsão de referência e comparação de modelos.
 - [ ] ML avaliado e previsões disponíveis pela API.
 - [ ] LLM com function calling e RAG fundamentado em documentos.
 - [ ] Interface React/Vite integrada e aplicação publicada e testada.
@@ -103,6 +115,12 @@ conferidos. As próximas pendências são cobertura, indicadores e a base analí
   cobertura por sensor, fuso e origem; ausência diferenciada de zero.
 - Vínculos municipais por ano em `/vinculos-estacoes`, usando centroides IBGE
   e metadados anuais INMET; adequação meteorológica ainda não validada.
+- Visão `base_analitica_semanal` com 28.548 combinações e calendário de 366
+  semanas; preserva contagens, lacunas e referências. Consultas em
+  `/base-analitica` e `/cobertura`, com indicador por população anual.
+- Série estadual separada em `notificacoes_sesa`: 13.290 agregados e 521.193
+  registros. Visão `base_analitica_sesa` com 20.358 combinações em 2020–2024,
+  consultável em `/base-sesa` e `/cobertura-sesa`, sem modificar a série SINAN.
 - Streamlit consumindo a API e testes automatizados da inspeção, ETL, carga e API.
 - Credenciais locais em `.env`, ignoradas pelo Git; exemplo fictício versionado.
 
@@ -111,9 +129,9 @@ conferidos. As próximas pendências são cobertura, indicadores e a base analí
 | Etapa | Entrega | Condição para considerar concluída |
 | --- | --- | --- |
 | 1. Cadastro municipal — concluído | Nomes IBGE, correspondência de códigos e exibição na API/Streamlit. | 78 nomes reais, correspondência completa e contagens/IDs SINAN preservados no Supabase. |
-| 2. População concluída; indicadores pendentes | Série populacional integrada; faltam definição do numerador e avaliação da cobertura. | Fontes e referências documentadas; indicador ainda precisa ser validado. |
+| 2. População e indicador descritivo concluídos | Registros da extração por 100 mil habitantes; alvo do ML definido como notificações estaduais. | Referências anuais preservadas; limitações de cobertura explícitas na avaliação. |
 | 3. Clima integrado; adequação pendente | ETL e vínculo geográfico implementados; falta definir critérios de uso dos sensores e das distâncias. | Cobertura verificável e limites de uso documentados antes do ML. |
-| 4. Base analítica e backend | Integração semanal, migrações SQL e consultas de indicadores/clima. | Chaves únicas, junções sem multiplicar linhas e ausência diferenciada de zero. |
+| 4. Base analítica e backend — concluído | Calendário semanal e visão integrada no Supabase; consultas de indicadores e presença das fontes. | 28.548 chaves únicas, contagens preservadas e ausência diferenciada de zero; conferido no PostgreSQL. |
 | 5. Machine Learning | Previsão de referência, comparação de modelos e serviço de previsões. | Avaliação temporal, métricas e limitações publicadas; modelo comparado à referência. |
 | 6. LLM/function calling | Assistente consultando funções reais do backend. | Respostas conferidas contra resultados das funções, com parâmetros validados. |
 | 7. RAG | Consulta a documentos oficiais com recuperação de trechos e referências. | Fontes rastreáveis e avaliação de respostas fundamentadas. |
@@ -206,7 +224,8 @@ ser consideradas nos indicadores e na avaliação temporal do ML.
 
 O campo legado `municipios.populacao` permanece como estava; a série anual é
 a fonte para os denominadores. O endpoint `/populacoes` permite consultar ano,
-município, valores e referências. Os indicadores continuam pendentes.
+município, valores e referências. O indicador descritivo foi integrado na base
+analítica; o alvo do ML foi definido como registros SESA por notificação.
 [Estimativas municipais do IBGE](https://www.ibge.gov.br/estatisticas/sociais/populacao/9103-estimativas-de-populacao.html).
 [Relação municipal publicada em 2023](https://agenciadenoticias.ibge.gov.br/agencia-sala-de-imprensa/2013-agencia-de-noticias/releases/37758-ibge-divulga-relacao-da-populacao-dos-municipios).
 
@@ -240,14 +259,154 @@ ou delimitar o período comum. Avaliar essas limitações antes do treinamento.
 [Orientações do INMET](https://portal.inmet.gov.br/noticias/saiba-como-acessar-os-dados-meteorol%C3%B3gicos-dispon%C3%ADveis-no-site-do-inmet).
 [API de malhas do IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3).
 
-**Base analítica e banco:** integrar calendário epidemiológico, contagens,
-população anual, clima e indicadores de cobertura. Os modelos Python definem
-as tabelas usadas pela aplicação. Para mudanças em estruturas existentes,
-versionar migrações específicas, pois `create_all()` não atualiza tabelas
-existentes. Não manter cópias manuais do esquema completo. Acrescentar endpoints conforme os dados e cálculos
-ficarem disponíveis, com respostas e filtros validados.
+**Base analítica e banco — integrada:** `calendario_epidemiologico` tem 366
+semanas de 2020–2026. A visão `base_analitica_semanal` cruza esse calendário
+com os 78 municípios e associa as fontes por suas chaves, gerando 28.548 linhas.
+Preserva as 11.679 linhas SINAN e os 362.712 registros, sem multiplicação nas
+junções. Há 16.869 combinações sem linha SINAN; elas permanecem nulas. Isso não
+significa necessariamente zero notificações no município.
 
-**ML:** definir o alvo e o horizonte de uma ou duas semanas. Comparar uma
+O numerador é `registros_notificados_sinan`, por residência e semana dos
+primeiros sintomas, sem exclusão por classificação. `registros_por_100_mil`
+usa a população daquele ano, com data de referência, tipo, fonte e observação.
+Sem numerador ou população, o resultado permanece nulo. Zero explícito é
+preservado. Não usa o campo legado de população nem interpreta a razão como
+incidência de casos confirmados.
+
+A visão mantém o vínculo geográfico anual, sua distância/método e as medidas
+da estação com cobertura de cada sensor. Uma linha climática toda ausente e
+a falta de linha climática são diferenciadas por `clima_presente` e contagens.
+2026 permanece identificado como fonte SINAN parcial, sem vínculo/clima no
+pacote atual. Nenhum ano tem cobertura epidemiológica ou representatividade
+climática marcada como validada.
+
+`/base-analitica` permite filtros e paginação; `/cobertura` resume presença das
+fontes por município/ano. O padrão exploratório climático é 80% das 168 horas
+em cada sensor, ajustável na consulta, sem valor normativo. Limiar zero ainda
+exige pelo menos uma medição válida em cada variável. Os totais abaixo são de
+**combinações de município/semana**, não de semanas distintas nem de casos reais:
+
+| Ano | Combinações previstas | Com linha SINAN | Sem linha SINAN | Registros notificados | Com registros, população e sensores ≥ 80% |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2020 | 4.134 | 111 | 4.023 | 7.544 | 77 |
+| 2021 | 4.056 | 1.612 | 2.444 | 15.535 | 894 |
+| 2022 | 4.056 | 1.175 | 2.881 | 11.185 | 963 |
+| 2023 | 4.056 | 2.919 | 1.137 | 136.925 | 2.844 |
+| 2024 | 4.056 | 2.753 | 1.303 | 138.123 | 2.213 |
+| 2025 | 4.134 | 1.715 | 2.419 | 34.075 | 1.404 |
+| 2026, parcial | 4.056 | 1.394 | 2.662 | 19.325 | 0 |
+
+Presença semanal não estima a proporção de casos capturados nem valida aptidão
+para ML. O Ministério da Saúde ressalva que sua extração considera os dados
+disponíveis no SINAN, enquanto o ES utiliza e-SUS VS desde 2020. A conciliação
+continua necessária. [Notas da fonte nacional](https://dadosabertos.saude.gov.br/dataset/arboviroses-dengue).
+[Fonte estadual e-SUS VS](https://dados.es.gov.br/dataset/doencas-e-agravos-de-notificacao).
+
+A tabela de calendário é definida em `backend/models.py`; as junções e cálculos
+da visão, em `backend/analitica.py`. O carregador existente prepara ambos com
+`--analitica --aplicar`, em transação. Uma visão consulta as fontes em cada
+acesso; não exige sincronização de uma cópia de seus resultados. A repetição
+foi conferida no Supabase sem alterar as seis tabelas de origem ou duplicar
+datas. A visão PostgreSQL usa `security_invoker` quando disponível.
+
+Para mudanças futuras em estruturas existentes, versionar migrações específicas,
+pois `create_all()` não altera tabelas. Não manter cópias manuais do esquema
+completo. Mudanças em nomes ou tipos de colunas da visão também precisam de
+migração; `CREATE OR REPLACE VIEW` não aceita qualquer alteração de estrutura.
+[Documentação PostgreSQL](https://www.postgresql.org/docs/current/sql-createview.html).
+
+### Comparação de fontes e proposta para o ML
+
+A análise de 17/11/2026 localizou os microdados estaduais de dengue em uma
+página adicional da SESA. Diferentemente do recurso mensal do catálogo,
+esses arquivos incluem código do município do paciente, data de notificação
+e classificação. A página oferece o pacote 2020–2022 e links para 2023 e 2024
+no Google Drive; os campos de 2025 e 2026 estavam sem download. A indicação do
+Drive pertence à própria página oficial. [Microdados SESA](https://app.wiki.saude.es.gov.br/pt-br/vigilanciasaude/sistema-de-informacao-e-dados/microdados).
+
+`pipelines/avaliar_fontes.py` baixa/reutiliza versões fixadas por SHA-256,
+trata o BOM UTF-8 com conteúdo CP1252 dos três arquivos e agrega por residência
+e data de notificação. O município é mapeado pelo cadastro explícito, aceitando
+códigos de seis/sete dígitos; não é inferido pelo nome. Os sete pacotes SINAN
+foram relidos pela mesma data de notificação para permitir uma comparação
+temporal coerente. O banco permanece com o critério anterior por primeiros
+sintomas; as duas referências temporais não devem ser confundidas.
+
+| Ano epidemiológico da notificação | Registros SINAN | Registros SESA | Combinações município/semana SINAN | Combinações município/semana SESA |
+| --- | ---: | ---: | ---: | ---: |
+| 2020 | 7.852 | 39.443 | 127 | 2.332 |
+| 2021 | 15.293 | 15.620 | 1.584 | 1.602 |
+| 2022 | 11.418 | 20.981 | 1.175 | 2.110 |
+| 2023 | 136.241 | 190.339 | 2.887 | 3.580 |
+| 2024 | 138.075 | 254.810 | 2.742 | 3.666 |
+
+Os totais diferem dos agrupamentos anteriores por primeiros sintomas. Os totais
+mensais do novo relatório também podem diferir destes, pois usam ano-calendário.
+O CSV candidato estadual tem 13.290 agregados e 521.193 registros. Seus dados
+e os originais permanecem em `data/`, fora do Git. Arquivos brutos de diferentes
+fontes não foram somados nem ligados por identificadores de pessoas.
+
+Essas diferenças não quantificam subnotificação, sobreposição ou cobertura real.
+O diagnóstico continua marcado como não validado epidemiologicamente. Entre
+os residentes ES, 29 linhas têm código sem correspondência e foram excluídas
+da candidata, com contadores por arquivo. Há quatro ocorrências adicionais de
+identificadores repetidos nos arquivos brutos; nenhuma linha foi removida por
+essa razão. Não está estabelecido que o identificador isolado seja uma chave
+única suficiente. Há datas fora do período, também contabilizadas. A série
+estadual mantém classificações descartadas/indefinidas, portanto o alvo proposto
+é registro notificado, não caso confirmado ou provável.
+
+**Definição adotada após a análise:** usar a publicação estadual para uma
+avaliação acadêmica retrospectiva de registros por semana de notificação,
+armazenando sua origem separadamente e preservando o SINAN para referência.
+O ML usará a fonte estadual, a referência de notificação e o período disponíveis:
+
+- Treino: 2020–2022; validação: 2023; teste reservado: 2024.
+- Alvo: número de registros notificados uma semana à frente, por município.
+- Histórico: quatro semanas anteriores consecutivas; ausência continua nula.
+- Clima: variáveis das semanas anteriores, com pelo menos 80% de horas válidas
+  em cada sensor. O limiar é exploratório e não garante representatividade.
+- Nunca usar clima observado da semana futura nem cortes aleatórios de datas.
+- Não apresentar a avaliação como reconstrução do que estava disponível em
+  tempo real: as extrações históricas contêm revisões e atrasos de registro.
+
+O diagnóstico encontra 1.795 exemplos de treino, 2.774 de validação e 2.449 de
+teste com as quatro semanas anteriores observadas e cobertura climática mínima
+nessas semanas. A disponibilidade de clima no alvo futuro não participa da
+seleção. Esses totais medem viabilidade técnica, não desempenho de modelo.
+A seleção de alvos observados e sequências completas cria um recorte e pode
+favorecer períodos/municípios com mais notificações; as métricas precisam
+explicitar essa limitação. Nenhum modelo foi treinado nem publicado nesta etapa.
+
+A série estadual foi carregada no Supabase em `notificacoes_sesa`, cuja
+estrutura é definida em `backend/models.py`. A referência temporal é
+`DATA_NOTIFICACAO`; cada linha registra URL oficial, hash do manifesto das três
+fontes e hash do CSV agregado. O modo `--sesa` do carregador valida versões,
+totais, códigos e chaves; usa transação e backup antes de revisões.
+
+`base_analitica_sesa` integra essa série à população e ao clima por município,
+ano e semana, abrangendo 261 semanas e 20.358 combinações. Preserva os 13.290
+agregados e 521.193 registros; 7.068 combinações permanecem nulas. Não usa o
+SINAN para completar lacunas. A estrutura da visão compartilha as regras de
+junção e indicadores com a visão SINAN, preservando rótulos próprios de fonte
+e de presença dos registros. A cobertura epidemiológica e a representatividade
+climática seguem marcadas como não validadas.
+
+A carga foi comparada integralmente com o CSV validado; todas as junções da
+visão foram conferidas. A repetição não alterou linhas. As sete tabelas
+anteriores, incluindo calendário, e a visão SINAN permaneceram iguais.
+`/base-sesa` e `/cobertura-sesa` foram verificadas diretamente contra o
+PostgreSQL. O Streamlit provisório permanece apresentando a série SINAN;
+a apresentação da série adotada e das previsões será integrada posteriormente.
+
+O agregado estadual tem modo de carga próprio e não é aceito no modo SINAN.
+O relatório reproduzível fica em
+`data/processed/avaliacao_fontes_resumo.json`; a comparação mensal e a candidata
+semanal ficam ao lado dele.
+
+**ML — próxima implementação:** preparar o alvo de registros notificados SESA
+uma semana à frente e as quatro semanas anteriores, conforme os critérios
+acima. Comparar uma
 referência simples, como o último valor observado, com os modelos previstos no
 planejamento. Separar treino e avaliação por datas, com cortes comuns aos
 municípios; preparar variáveis e transformações sem usar dados futuros.
@@ -267,9 +426,10 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 
 ### Continuidade até a entrega final
 
-A prioridade atual é avaliar a cobertura, definir os indicadores e consolidar
-a base semanal usando as fontes já integradas. As decisões metodológicas precedem
-o treinamento. Em seguida, completar ML, assistente, RAG, interface e publicação.
+A prioridade atual é preparar os exemplos temporais e avaliar a previsão de
+referência e os modelos sobre a série estadual adotada. A interpretação deve
+respeitar lacunas, seleção de amostras e revisões históricas. Em seguida,
+completar serviço de previsões, assistente, RAG, interface e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
 
 ## Acompanhar a implementação

@@ -5,15 +5,17 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from backend.analitica import BASE_ANALITICA, BASE_SESA, consulta_cobertura
 from backend.database import DatabaseConfigurationError, get_db
 from backend.models import (
     CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, PopulacaoMunicipal, VinculoMunicipioEstacao,
 )
 from backend.schemas import (
-    CasoResponse, ClimaResponse, EstacaoResponse, MunicipioResponse, PopulacaoResponse, VinculoEstacaoResponse,
+    BaseAnaliticaResponse, BaseSesaResponse, CasoResponse, ClimaResponse, CoberturaResponse, CoberturaSesaResponse,
+    EstacaoResponse, MunicipioResponse, PopulacaoResponse, VinculoEstacaoResponse,
 )
 
-app = FastAPI(title="API DenguePrev - ES", version="0.5.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.7.0")
 
 
 @app.exception_handler(DatabaseConfigurationError)
@@ -123,3 +125,79 @@ def listar_clima(
     if semana is not None:
         query = query.filter(ClimaSemanal.semana_epidemiologica == semana)
     return query.order_by(ClimaSemanal.ano, ClimaSemanal.semana_epidemiologica, ClimaSemanal.codigo_estacao).all()
+
+
+@app.get("/base-analitica", response_model=list[BaseAnaliticaResponse])
+def listar_base_analitica(
+    ano: int | None = Query(default=None, ge=2020, le=2026),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    semana: int | None = Query(default=None, ge=1, le=53),
+    limite: int = Query(default=500, ge=1, le=5000),
+    deslocamento: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Calendário completo, registros da extração, população e clima. Ausência permanece nula."""
+    tabela = BASE_ANALITICA
+    query = tabela.select()
+    if ano is not None:
+        query = query.where(tabela.c.ano == ano)
+    if codigo_municipio is not None:
+        query = query.where(tabela.c.codigo_ibge == codigo_municipio)
+    if semana is not None:
+        query = query.where(tabela.c.semana_epidemiologica == semana)
+    return db.execute(query.order_by(tabela.c.data_inicio, tabela.c.codigo_ibge).limit(limite).offset(deslocamento)).mappings().all()
+
+
+@app.get("/cobertura", response_model=list[CoberturaResponse])
+def listar_cobertura(
+    ano: int | None = Query(default=None, ge=2020, le=2026),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    cobertura_minima_clima_pct: float = Query(default=80, ge=0, le=100, allow_inf_nan=False),
+    db: Session = Depends(get_db),
+):
+    """Presença por município/ano. O limiar climático é exploratório; não valida cobertura epidemiológica nem aptidão para ML."""
+    tabela = BASE_ANALITICA.c
+    query = consulta_cobertura(cobertura_minima_clima_pct)
+    if ano is not None:
+        query = query.where(tabela.ano == ano)
+    if codigo_municipio is not None:
+        query = query.where(tabela.codigo_ibge == codigo_municipio)
+    return db.execute(query.order_by(tabela.ano, tabela.codigo_ibge)).mappings().all()
+
+
+@app.get("/base-sesa", response_model=list[BaseSesaResponse])
+def listar_base_sesa(
+    ano: int | None = Query(default=None, ge=2020, le=2024),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    semana: int | None = Query(default=None, ge=1, le=53),
+    limite: int = Query(default=500, ge=1, le=5000),
+    deslocamento: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """SESA por semana de notificação com população e clima; fonte adotada para o ML retrospectivo."""
+    tabela = BASE_SESA
+    query = tabela.select()
+    if ano is not None:
+        query = query.where(tabela.c.ano == ano)
+    if codigo_municipio is not None:
+        query = query.where(tabela.c.codigo_ibge == codigo_municipio)
+    if semana is not None:
+        query = query.where(tabela.c.semana_epidemiologica == semana)
+    return db.execute(query.order_by(tabela.c.data_inicio, tabela.c.codigo_ibge).limit(limite).offset(deslocamento)).mappings().all()
+
+
+@app.get("/cobertura-sesa", response_model=list[CoberturaSesaResponse])
+def listar_cobertura_sesa(
+    ano: int | None = Query(default=None, ge=2020, le=2024),
+    codigo_municipio: str | None = Query(default=None, pattern=r"^32\d{4}$"),
+    cobertura_minima_clima_pct: float = Query(default=80, ge=0, le=100, allow_inf_nan=False),
+    db: Session = Depends(get_db),
+):
+    """Presença de registros estaduais e qualidade horária; não mede a proporção de casos reais capturados."""
+    tabela = BASE_SESA.c
+    query = consulta_cobertura(cobertura_minima_clima_pct, fonte="sesa")
+    if ano is not None:
+        query = query.where(tabela.ano == ano)
+    if codigo_municipio is not None:
+        query = query.where(tabela.codigo_ibge == codigo_municipio)
+    return db.execute(query.order_by(tabela.ano, tabela.codigo_ibge)).mappings().all()

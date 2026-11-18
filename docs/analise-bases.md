@@ -4,6 +4,12 @@ Este documento registra a análise inicial das fontes. Para os critérios do ETL
 implementado, os totais corrigidos e o ponto atual do desenvolvimento, consulte
 o [README principal](../README.md).
 
+Atualização de 17/11/2026: foram localizados microdados adicionais da SESA com
+município do paciente e data de notificação, disponíveis até 2024. A comparação
+reproduzível e a proposta de adoção estão no
+[contexto do projeto](contexto-projeto.md#comparação-de-fontes-e-proposta-para-o-ml).
+As observações abaixo sobre o recurso mensal descrevem a descoberta inicial.
+
 Atualização posterior à análise inicial: a integração populacional confirmou
 que a coluna estimada de 2026 da exportação coincide nos 78 municípios com a
 publicação oficial de 2026; a nota de 2024 está desatualizada. A série carregada

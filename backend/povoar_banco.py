@@ -17,8 +17,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.database import Base, DatabaseConfigurationError, get_engine
+from backend.analitica import ANOS_SESA, gerar_calendario, preparar_base_analitica
 from backend.models import (
-    CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, PopulacaoMunicipal, VinculoMunicipioEstacao,
+    CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, NotificacaoEstadual,
+    PopulacaoMunicipal, VinculoMunicipioEstacao,
 )
 from pipelines.arquivos import sha256_arquivo
 from pipelines.calendario import semanas_no_ano
@@ -42,6 +44,9 @@ from pipelines.etl_inmet import (
 from pipelines.vincular_estacoes import (
     COLUNAS as COLUNAS_VINCULOS, OUTPUT_CSV as VINCULOS_CSV, OUTPUT_JSON as VINCULOS_RESUMO,
     carregar_vinculos, validar_vinculos,
+)
+from pipelines.avaliar_fontes import (
+    CANDIDATA_CSV, RESUMO_AVALIACAO, COLUNAS_BANCO_SESA, carregar_serie_sesa, validar_serie_sesa,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,6 +143,7 @@ def salvar_backup(rows, pasta, *, tabela="casos"):
         "estacoes": list(COLUNAS_ESTACOES),
         "clima": list(COLUNAS_CLIMA),
         "vinculos": list(COLUNAS_VINCULOS),
+        "sesa": list(COLUNAS_BANCO_SESA),
     }
     # O backup é somente de registros agregados, não de pessoas.
     with path.open("x", encoding="utf-8", newline="") as stream:
@@ -417,6 +423,47 @@ def sincronizar_vinculos(engine, registros, *, backup_dir=DEFAULT_BACKUP):
                 mantidos=len(registros) - len(insercoes) - len(alteracoes), backup=backup)
 
 
+def sincronizar_sesa(engine, registros, *, backup_dir=DEFAULT_BACKUP):
+    """Carga estadual em tabela própria; nunca modifica registros SINAN."""
+    validar_serie_sesa(registros)
+    tabela = NotificacaoEstadual.__table__
+    anos = sorted({row["ano"] for row in registros})
+    chaves = ("codigo_ibge", "ano", "semana_epidemiologica")
+    campos = [column.name for column in tabela.columns if not column.primary_key]
+    def chave_sesa(row):
+        return tuple(row[campo] for campo in chaves)
+    with engine.begin() as connection:
+        if not inspect(connection).has_table("municipios"):
+            raise ValueError("Carregue primeiro o cadastro municipal.")
+        municipios = set(connection.execute(select(Municipio.codigo_ibge)).scalars())
+        if {row["codigo_ibge"] for row in registros} - municipios:
+            raise ValueError("SESA com município ainda não cadastrado.")
+        tabela.create(bind=connection, checkfirst=True)
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("LOCK TABLE notificacoes_sesa IN SHARE ROW EXCLUSIVE MODE"))
+        atuais = list(connection.execute(select(tabela).where(tabela.c.ano.in_(anos))).mappings())
+        por_chave = {chave_sesa(row): row for row in atuais}
+        if set(por_chave) - {chave_sesa(row) for row in registros}:
+            raise ValueError("SESA existente fora da fonte no período; revise antes de substituir dados.")
+        insercoes, alteracoes = [], []
+        for row in registros:
+            anterior = por_chave.get(chave_sesa(row))
+            if anterior is None:
+                insercoes.append(row)
+            elif any(anterior[campo] != row[campo] for campo in campos):
+                alteracoes.append({**{"alvo_" + campo: row[campo] for campo in chaves},
+                                   **{"novo_" + campo: row[campo] for campo in campos}})
+        backup = salvar_backup(atuais, backup_dir, tabela="sesa") if alteracoes else None
+        for lote in blocos(insercoes):
+            connection.execute(insert(tabela), lote)
+        for lote in blocos(alteracoes):
+            connection.execute(update(tabela).where(*[
+                tabela.c[campo] == bindparam("alvo_" + campo) for campo in chaves
+            ]).values({campo: bindparam("novo_" + campo) for campo in campos}), lote)
+    return dict(inseridos=len(insercoes), atualizados=len(alteracoes),
+                mantidos=len(registros) - len(insercoes) - len(alteracoes), backup=backup)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
@@ -426,12 +473,30 @@ def main(argv=None):
     modo.add_argument("--populacao", action="store_true", help="Confere ou sincroniza somente a população por município/ano.")
     modo.add_argument("--clima", action="store_true", help="Confere ou sincroniza estações e clima semanal INMET.")
     modo.add_argument("--vinculos", action="store_true", help="Confere ou sincroniza vínculos geográficos por município/ano.")
+    modo.add_argument("--analitica", action="store_true", help="Prepara o calendário e a visão integrada, preservando as fontes.")
+    modo.add_argument("--sesa", action="store_true", help="Confere ou carrega somente a série estadual por notificação.")
+    modo.add_argument("--analitica-sesa", action="store_true", help="Prepara a visão estadual integrada de 2020–2024.")
     parser.add_argument("--estacoes", type=Path, default=ESTACOES_CSV, help="CSV de estações, utilizado no modo --clima.")
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP)
     parser.add_argument("--aplicar", action="store_true", help="Sincroniza o banco configurado em DATABASE_URL.")
     args = parser.parse_args(argv)
     try:
-        if args.vinculos:
+        if args.analitica or args.analitica_sesa:
+            if args.input or args.resumo:
+                raise ValueError("O modo --analitica consulta as tabelas; não recebe CSV ou resumo.")
+            fonte = "sesa" if args.analitica_sesa else "sinan"
+            semanas = [row for row in gerar_calendario() if not args.analitica_sesa or row["ano"] in ANOS_SESA]
+            print(f"Calendário validado: {len(semanas)} semanas; fonte {fonte}; visão com lacunas preservadas.")
+            if not args.aplicar:
+                print("Conferência concluída sem conexão. Para preparar a visão no banco, use --aplicar.")
+                return 0
+            resultado = preparar_base_analitica(get_engine(), fonte=fonte)
+            print(json.dumps(resultado, ensure_ascii=False, indent=2))
+            return 0
+        if args.sesa:
+            fonte = carregar_serie_sesa(args.input or CANDIDATA_CSV, args.resumo or RESUMO_AVALIACAO)
+            print(f"Série estadual validada: {len(fonte)} agregados; {sum(row['registros_notificados'] for row in fonte)} registros por notificação.")
+        elif args.vinculos:
             fonte = carregar_vinculos(args.input or VINCULOS_CSV, args.resumo or VINCULOS_RESUMO)
             print(f"Vínculos validados: {len(fonte)} associações anuais por proximidade geográfica.")
         elif args.clima:
@@ -452,7 +517,9 @@ def main(argv=None):
         if not args.aplicar:
             print("Conferência concluída. Para sincronizar o banco, execute com --aplicar.")
             return 0
-        if args.vinculos:
+        if args.sesa:
+            sincronizar = sincronizar_sesa
+        elif args.vinculos:
             sincronizar = sincronizar_vinculos
         elif args.clima:
             sincronizar = sincronizar_clima

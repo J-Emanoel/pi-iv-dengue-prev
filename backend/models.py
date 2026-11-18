@@ -56,6 +56,42 @@ class PopulacaoMunicipal(Base):
     observacao = Column(Text, nullable=False)
 
 
+class SemanaEpidemiologica(Base):
+    """Calendário completo para distinguir uma semana ausente de contagem zero."""
+
+    __tablename__ = "calendario_epidemiologico"
+    __table_args__ = (
+        CheckConstraint("semana_epidemiologica BETWEEN 1 AND 53", name="ck_calendario_semana"),
+        CheckConstraint("data_fim >= data_inicio", name="ck_calendario_datas"),
+    )
+
+    ano = Column(Integer, primary_key=True)
+    semana_epidemiologica = Column(Integer, primary_key=True)
+    data_inicio = Column(Date, nullable=False, unique=True)
+    data_fim = Column(Date, nullable=False)
+
+
+class NotificacaoEstadual(Base):
+    """Registros SESA por residência e semana da notificação, com versão da extração."""
+
+    __tablename__ = "notificacoes_sesa"
+    __table_args__ = (
+        CheckConstraint("ano BETWEEN 2020 AND 2024", name="ck_sesa_ano"),
+        CheckConstraint("semana_epidemiologica BETWEEN 1 AND 53", name="ck_sesa_semana"),
+        CheckConstraint("registros_notificados >= 0", name="ck_sesa_quantidade"),
+        CheckConstraint("data_referencia = 'DATA_NOTIFICACAO'", name="ck_sesa_referencia"),
+    )
+
+    codigo_ibge = Column(String, ForeignKey("municipios.codigo_ibge"), primary_key=True)
+    ano = Column(Integer, primary_key=True)
+    semana_epidemiologica = Column(Integer, primary_key=True)
+    registros_notificados = Column(Integer, nullable=False)
+    data_referencia = Column(String, nullable=False)
+    fonte_url = Column(Text, nullable=False)
+    fonte_manifesto_sha256 = Column(String(64), nullable=False)
+    fonte_csv_sha256 = Column(String(64), nullable=False)
+
+
 class EstacaoMeteorologica(Base):
     __tablename__ = "estacoes_inmet"
     __table_args__ = (CheckConstraint("uf = 'ES'", name="ck_estacao_uf"),)
