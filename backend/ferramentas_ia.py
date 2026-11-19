@@ -79,7 +79,24 @@ def serializar_semana(linha):
     return {campo: round(valor, 6) if isinstance(valor, float) else valor for campo, valor in dados.items()}
 
 
+def _validar_argumentos(nome, argumentos_json, fonte_padrao):
+    esquema = CATALOGO[nome][0]
+    argumentos = esquema.model_validate(json.loads(argumentos_json)).model_dump()
+    if "fonte" in argumentos and argumentos["fonte"] is None:
+        argumentos["fonte"] = fonte_padrao
+    return argumentos
+
+
+def _consulta_com_erro(nome, argumentos, codigo, mensagem):
+    return ConsultaAssistenteResponse(
+        ferramenta=nome, argumentos=argumentos, sucesso=False,
+        resultado=dict(erro=codigo, mensagem=mensagem),
+    )
+
+
 class FerramentasIA:
+    """Valida o pedido da LLM e o encaminha a uma operação local de leitura."""
+
     def __init__(self, session_factory=None, carregar_previsoes=None, carregar_documentos=None):
         self.session_factory = session_factory or SessionLocal
         self.carregar_previsoes = carregar_previsoes or get_servico_previsoes
@@ -88,47 +105,51 @@ class FerramentasIA:
     def executar(self, nome, argumentos_json, *, fonte_padrao="sinan"):
         """Nome não autorizado nunca vira SQL, expressão Python ou chamada arbitrária."""
         if nome not in CATALOGO:
-            return ConsultaAssistenteResponse(ferramenta=nome, argumentos={}, sucesso=False,
-                resultado=dict(erro="ferramenta_nao_permitida", mensagem="Use somente as funções declaradas."))
-        esquema = CATALOGO[nome][0]
+            return _consulta_com_erro(nome, {}, "ferramenta_nao_permitida", "Use somente as funções declaradas.")
         try:
-            dados = json.loads(argumentos_json)
-            argumentos = esquema.model_validate(dados).model_dump()
-            if "fonte" in argumentos and argumentos["fonte"] is None:
-                argumentos["fonte"] = fonte_padrao
+            argumentos = _validar_argumentos(nome, argumentos_json, fonte_padrao)
         except (ValueError, TypeError, ValidationError):
-            return ConsultaAssistenteResponse(ferramenta=nome, argumentos={}, sucesso=False,
-                resultado=dict(erro="argumentos_invalidos", mensagem="Confira tipos, campos permitidos, município ES e limites do esquema."))
+            return _consulta_com_erro(nome, {}, "argumentos_invalidos",
+                "Confira tipos, campos permitidos, município ES e limites do esquema.")
         try:
-            if nome == "listar_municipios":
-                resultado = self.listar_municipios(**argumentos)
-            elif nome == "consultar_historico":
-                resultado = self.consultar_historico(**argumentos)
-            elif nome == "comparar_municipios":
-                resultado = self.comparar_municipios(**argumentos)
-            elif nome == "consultar_modelo":
-                resultado = self.carregar_previsoes(fonte=argumentos["fonte"]).modelo.model_dump(mode="json")
-            elif nome == "consultar_documentos":
-                resultado = self.carregar_documentos().buscar(**argumentos)
-                if not resultado["encontrado"]:
-                    return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
-                        resultado={**resultado, "erro": "sem_base_documental",
-                            "mensagem": "Nenhum trecho suficiente foi encontrado. Não complete com conhecimento externo."})
-            else:
-                dia = date.fromisoformat(argumentos["data_inicio"]) if argumentos["data_inicio"] else None
-                resultado = self.carregar_previsoes(fonte=argumentos["fonte"]).consultar(
-                    data_inicio=dia, codigo_municipio=argumentos["codigo_municipio"],
-                ).model_dump(mode="json")
+            resultado = self._executar_validada(nome, argumentos)
+            if nome == "consultar_documentos" and not resultado["encontrado"]:
+                return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
+                    resultado={**resultado, "erro": "sem_base_documental",
+                        "mensagem": "Nenhum trecho suficiente foi encontrado. Não complete com conhecimento externo."})
             return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=True, resultado=resultado)
         except (ConsultaPrevisaoError, ValueError) as exc:
-            return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
-                resultado=dict(erro="consulta_invalida", mensagem=str(exc)))
+            return _consulta_com_erro(nome, argumentos, "consulta_invalida", str(exc))
         except BaseDocumentalIndisponivelError:
-            return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
-                resultado=dict(erro="base_documental_indisponivel", mensagem="A base documental está indisponível. Não substitua os trechos por conhecimento externo."))
+            return _consulta_com_erro(nome, argumentos, "base_documental_indisponivel",
+                "A base documental está indisponível. Não substitua os trechos por conhecimento externo.")
         except (DatabaseConfigurationError, SQLAlchemyError, PrevisaoIndisponivelError):
-            return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
-                resultado=dict(erro="dados_indisponiveis", mensagem="Não foi possível obter os dados. Confira conexão e artefatos locais; não estime valores ausentes."))
+            return _consulta_com_erro(nome, argumentos, "dados_indisponiveis",
+                "Não foi possível obter os dados. Confira conexão e artefatos locais; não estime valores ausentes.")
+
+    def _executar_validada(self, nome, argumentos):
+        # Mapeamento explícito: o nome da LLM nunca é resolvido com getattr/eval.
+        operacoes = {
+            "listar_municipios": self.listar_municipios,
+            "consultar_historico": self.consultar_historico,
+            "comparar_municipios": self.comparar_municipios,
+            "consultar_modelo": self.consultar_modelo,
+            "consultar_previsao": self.consultar_previsao,
+            "consultar_documentos": self.consultar_documentos,
+        }
+        return operacoes[nome](**argumentos)
+
+    def consultar_modelo(self, fonte="sinan"):
+        return self.carregar_previsoes(fonte=fonte).modelo.model_dump(mode="json")
+
+    def consultar_previsao(self, codigo_municipio=None, data_inicio=None, fonte="sinan"):
+        dia = date.fromisoformat(data_inicio) if data_inicio else None
+        return self.carregar_previsoes(fonte=fonte).consultar(
+            data_inicio=dia, codigo_municipio=codigo_municipio,
+        ).model_dump(mode="json")
+
+    def consultar_documentos(self, pergunta, limite=2):
+        return self.carregar_documentos().buscar(pergunta=pergunta, limite=limite)
 
     def _consultar(self, operacao):
         with self.session_factory() as session:

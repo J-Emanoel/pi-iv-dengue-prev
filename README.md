@@ -122,6 +122,29 @@ Ausência de registro não foi convertida em zero.
 de calendário epidemiológico e hash de arquivos; não precisam ser executados
 separadamente. `backend/__init__.py` identifica o pacote Python.
 
+Para acompanhar os fluxos principais no código:
+
+1. **Inspeção:** `inspect_paths()` encontra os CSVs e ZIPs; `inspect_csv()`
+   identifica o cabeçalho e lê as linhas. A classe auxiliar `_FileInspector`
+   percorre os arquivos e reúne o relatório, incluindo os erros encontrados.
+2. **Carga do banco:** em `povoar_banco.py`, `main()` seleciona o modo.
+   `_preparar_carga()` reúne a fonte validada, seu sincronizador e o resumo
+   para conferência. As funções `sincronizar_*()` executam a carga com as
+   validações e transações correspondentes. A atualização de 2026 tem seu
+   próprio fluxo conjunto. A conexão só é aberta com `--aplicar`.
+3. **API:** em `backend/main.py`, cada rota recebe os parâmetros e chama o
+   serviço responsável. `schemas.py` descreve os dados de entrada e saída.
+4. **Assistente:** `conversar()` controla as rodadas; `ClienteGroq.completar()`
+   cuida do envio HTTP; `FerramentasIA.executar()` valida os argumentos e
+   encaminha a consulta permitida. Os números vêm do backend e os trechos
+   documentais de `rag.py`. As referências passam por `validar_referencias()`.
+5. **ML:** `ml/preparar_dados.py` valida o snapshot e constrói as variáveis;
+   `ml/treinar.py` compara as estratégias. `backend/previsoes.py` carrega o
+   resultado salvo para servir as estimativas pela API.
+
+Funções e classes com prefixo `_` são auxiliares internas desses fluxos.
+Os comandos de execução estão nas seções abaixo.
+
 A pasta `data/` contém originais locais, derivados e backups, e é
 criada conforme a execução. O ZIP, `data/`, `.env` e `.venv/` ficam fora dos
 commits. Os CSVs/JSONs do fluxo antigo foram removidos; o agregado atual é o de

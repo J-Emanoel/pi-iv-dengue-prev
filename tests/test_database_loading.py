@@ -1,13 +1,17 @@
 import csv
 import hashlib
+import io
 import json
 import tempfile
 import unittest
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch, sentinel
 
 from sqlalchemy import create_engine, event, insert, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from backend import povoar_banco
 from backend.models import CasoDengue, Municipio
 from backend.povoar_banco import FonteCarga, carregar_fonte, sincronizar_casos, sincronizar_municipios
 
@@ -199,6 +203,132 @@ class NovoCadastroTests(unittest.TestCase):
                 self.assertEqual(list(conn.execute(select(CasoDengue.id))), [])
         finally:
             engine.dispose()
+
+
+class ComandoCargaTests(unittest.TestCase):
+    """Confere o comando público sem conectar ao banco configurado no ambiente."""
+
+    def setUp(self):
+        patches = ExitStack()
+        self.addCleanup(patches.close)
+        fontes = {
+            "carregar_fonte": FonteCarga([record()], [2024]),
+            "carregar_cadastro": [dict(codigo_municipio="320530")],
+            "carregar_populacao": [dict(populacao=1000)],
+            "carregar_clima": ([dict(codigo="A612")], [dict(ano=2026)]),
+            "carregar_vinculos": [dict(ano=2026)],
+            "carregar_serie_sesa": [dict(registros_notificados=7)],
+        }
+        self.carregadores = {
+            nome: patches.enter_context(patch.object(povoar_banco, nome, return_value=fonte))
+            for nome, fonte in fontes.items()
+        }
+        self.sincronizadores = {
+            nome: patches.enter_context(patch.object(povoar_banco, nome, return_value={}))
+            for nome in (
+                "sincronizar_casos", "sincronizar_municipios", "sincronizar_populacoes",
+                "sincronizar_clima", "sincronizar_vinculos", "sincronizar_sesa",
+                "sincronizar_atualizacao_2026", "preparar_base_analitica",
+            )
+        }
+        self.engine = patches.enter_context(patch.object(povoar_banco, "get_engine", return_value=sentinel.engine))
+
+    def executar(self, argumentos):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            codigo = povoar_banco.main(argumentos)
+        return codigo, stdout.getvalue(), stderr.getvalue()
+
+    def test_todos_os_modos_conferem_sem_abrir_conexao_ou_aplicar(self):
+        for modo in (None, "municipios", "populacao", "clima", "vinculos", "sesa",
+                     "analitica", "analitica-sesa", "atualizacao-2026"):
+            with self.subTest(modo=modo):
+                ano = 2026 if modo == "atualizacao-2026" else 2024
+                self.carregadores["carregar_fonte"].return_value = FonteCarga([record(year=ano)], [ano])
+                codigo, saida, erro = self.executar([f"--{modo}"] if modo else [])
+                self.assertEqual(codigo, 0, erro)
+                self.assertIn("Conferência concluída", saida)
+                self.assertEqual(erro, "")
+        self.engine.assert_not_called()
+        for sincronizar in self.sincronizadores.values():
+            sincronizar.assert_not_called()
+
+    def test_aplicar_encaminha_a_fonte_validada_e_o_backup_ao_modo_escolhido(self):
+        modos = (
+            (None, "carregar_fonte", "sincronizar_casos"),
+            ("municipios", "carregar_cadastro", "sincronizar_municipios"),
+            ("populacao", "carregar_populacao", "sincronizar_populacoes"),
+            ("clima", "carregar_clima", "sincronizar_clima"),
+            ("vinculos", "carregar_vinculos", "sincronizar_vinculos"),
+            ("sesa", "carregar_serie_sesa", "sincronizar_sesa"),
+        )
+        for modo, carregador, sincronizador in modos:
+            with self.subTest(modo=modo):
+                argumentos = ["--aplicar", "--input", "entrada.csv", "--resumo", "resumo.json",
+                              "--backup-dir", "backup-local", "--estacoes", "estacoes.csv"]
+                if modo:
+                    argumentos.append(f"--{modo}")
+                codigo, _, erro = self.executar(argumentos)
+                self.assertEqual(codigo, 0, erro)
+                parametros = [Path("entrada.csv"), Path("resumo.json")]
+                if modo == "clima":
+                    parametros.append(Path("estacoes.csv"))
+                self.carregadores[carregador].assert_called_once_with(*parametros)
+                self.sincronizadores[sincronizador].assert_called_once_with(
+                    sentinel.engine, self.carregadores[carregador].return_value, backup_dir=Path("backup-local"),
+                )
+        self.assertEqual(self.engine.call_count, len(modos))
+
+    def test_atualizacao_2026_aplica_apenas_a_operacao_conjunta(self):
+        fonte = FonteCarga([record(year=2026)], [2026])
+        self.carregadores["carregar_fonte"].return_value = fonte
+        codigo, _, erro = self.executar(["--atualizacao-2026", "--aplicar"])
+        self.assertEqual(codigo, 0, erro)
+        self.carregadores["carregar_fonte"].assert_called_once_with(
+            povoar_banco.ATUALIZACAO_CSV, povoar_banco.ATUALIZACAO_RESUMO,
+        )
+        self.sincronizadores["sincronizar_atualizacao_2026"].assert_called_once_with(
+            sentinel.engine, fonte, self.carregadores["carregar_clima"].return_value,
+            self.carregadores["carregar_vinculos"].return_value, backup_dir=povoar_banco.DEFAULT_BACKUP,
+        )
+        self.sincronizadores["sincronizar_casos"].assert_not_called()
+        self.sincronizadores["sincronizar_clima"].assert_not_called()
+        self.sincronizadores["sincronizar_vinculos"].assert_not_called()
+
+    def test_analitica_preserva_fonte_selecionada_e_recusa_entrada_csv(self):
+        for modo, fonte in (("analitica", "sinan"), ("analitica-sesa", "sesa")):
+            with self.subTest(fonte=fonte):
+                codigo, _, erro = self.executar([f"--{modo}", "--aplicar"])
+                self.assertEqual(codigo, 0, erro)
+                self.sincronizadores["preparar_base_analitica"].assert_called_with(sentinel.engine, fonte=fonte)
+                codigo, _, erro = self.executar([f"--{modo}", "--input", "entrada.csv", "--aplicar"])
+                self.assertEqual(codigo, 1)
+                self.assertIn("não recebe CSV", erro)
+        self.assertEqual(self.engine.call_count, 2)
+
+    def test_fonte_invalida_interrompe_antes_de_conectar(self):
+        self.carregadores["carregar_fonte"].side_effect = ValueError("CSV e resumo não correspondem.")
+        codigo, _, erro = self.executar(["--aplicar"])
+        self.assertEqual(codigo, 1)
+        self.assertIn("não correspondem", erro)
+        self.engine.assert_not_called()
+
+    def test_guarda_do_historico_e_exclusividade_anual_continuam_ativas(self):
+        for argumentos, anos in ((["--aplicar"], [2025, 2026]),
+                                 (["--atualizacao-2026", "--aplicar"], [2025])):
+            with self.subTest(argumentos=argumentos):
+                self.carregadores["carregar_fonte"].return_value = FonteCarga([record()], anos)
+                codigo, _, erro = self.executar(argumentos)
+                self.assertEqual(codigo, 1)
+                self.assertTrue(erro.startswith("Erro:"))
+        self.engine.assert_not_called()
+
+    def test_erro_do_banco_nao_expoe_detalhes_da_conexao(self):
+        self.sincronizadores["sincronizar_casos"].side_effect = SQLAlchemyError("segredo-ficticio-do-teste")
+        codigo, saida, erro = self.executar(["--aplicar"])
+        self.assertEqual(codigo, 1)
+        self.assertIn("A transação foi revertida", erro)
+        self.assertNotIn("segredo-ficticio-do-teste", saida + erro)
 
 
 class SourceValidationTests(unittest.TestCase):

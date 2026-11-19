@@ -14,6 +14,7 @@ import sys
 import tempfile
 import zipfile
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
@@ -21,6 +22,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROBE_BYTES = 64 * 1024
 ZIP_MEMORY_BYTES = 8 * 1024 * 1024
 MAX_ZIP_DEPTH = 4
+
+
+@dataclass
+class _CsvLayout:
+    """Informações necessárias para localizar e interpretar o cabeçalho."""
+
+    encoding: str
+    source: str
+    delimiter: str
+    header_line: int
+    metadata: dict[str, str]
 
 
 def detect_encoding(probe: bytes) -> str:
@@ -56,30 +68,11 @@ def source_hint(name: str) -> str | None:
     return None
 
 
-def inspect_csv(
-    stream: BinaryIO,
-    label: str,
-    size_bytes: int,
-    *,
-    sample_rows: int = 3,
-    count_rows: bool = False,
-    source_filter: str = "all",
-) -> dict | None:
-    """Lê cabeçalho/amostra ou conta a tabela inteira em fluxo.
-
-    O stream deve permitir seek, como arquivos locais e ZipExtFile. O conteúdo
-    original é preservado; entidades HTML recebem somente rótulos de exibição.
-    """
-    if sample_rows < 0:
-        raise ValueError("A quantidade de linhas de amostra deve ser não negativa.")
-    probe = stream.read(PROBE_BYTES)
-    if not probe:
-        raise ValueError("Arquivo vazio.")
+def _detect_csv_layout(probe: bytes) -> _CsvLayout:
     encoding = detect_encoding(probe)
     text = codecs.getincrementaldecoder(encoding)(errors="strict").decode(
         probe, final=False
     )
-    stream.seek(0)
     lines = text.splitlines()
     metadata: dict[str, str] = {}
     source = "unknown"
@@ -99,60 +92,191 @@ def inspect_csv(
         metadata["title"] = html.unescape(first)
     else:
         delimiter = detect_delimiter(text)
+    return _CsvLayout(encoding, source, delimiter, header_line, metadata)
 
-    with io.TextIOWrapper(stream, encoding=encoding, newline="") as decoded:
-        reader = csv.reader(decoded, delimiter=delimiter)
-        for _ in range(header_line - 1):
+
+def _create_csv_profile(layout, columns, label, size_bytes, *, count_rows):
+    return {
+        "path": label,
+        "size_bytes": size_bytes,
+        "source": layout.source,
+        "encoding": layout.encoding,
+        "encoding_detection": "BOM/UTF-8 verificado; CP1252/Latin-1 heurístico",
+        "delimiter": layout.delimiter,
+        "header_line": layout.header_line,
+        "column_count": len(columns),
+        "columns": columns,
+        "column_labels": [html.unescape(c) for c in columns],
+        "empty_column_positions": [i + 1 for i, c in enumerate(columns) if not c],
+        "duplicate_named_columns": [
+            c for c, count in Counter(columns).items() if c and count > 1
+        ],
+        "metadata": layout.metadata,
+        "sample_rows": [],
+        "row_count": None,
+        "scan_mode": "full_table" if count_rows else "sample",
+        "footer_detected": False,
+    }
+
+
+def _scan_csv_rows(reader, profile, *, sample_rows, count_rows):
+    """Acrescenta amostras e contagem ao perfil sem carregar a tabela inteira."""
+    rows = 0
+    if count_rows or sample_rows:
+        for row in reader:
+            if not row or not any(cell.strip() for cell in row):
+                continue
+            if profile["source"] == "ibge" and row[0].lstrip().startswith("<"):
+                profile["footer_detected"] = True
+                break
+            if len(row) != profile["column_count"]:
+                raise ValueError(
+                    f"Linha física {reader.line_num}: {len(row)} campos; "
+                    f"esperados {profile['column_count']}."
+                )
+            rows += 1
+            if len(profile["sample_rows"]) < sample_rows:
+                profile["sample_rows"].append(row)
+            if not count_rows and rows >= sample_rows:
+                break
+    if count_rows:
+        profile["row_count"] = rows
+
+
+def inspect_csv(
+    stream: BinaryIO,
+    label: str,
+    size_bytes: int,
+    *,
+    sample_rows: int = 3,
+    count_rows: bool = False,
+    source_filter: str = "all",
+) -> dict | None:
+    """Lê cabeçalho/amostra ou conta a tabela inteira em fluxo.
+
+    O stream deve permitir seek, como arquivos locais e ZipExtFile. O conteúdo
+    original é preservado; entidades HTML recebem somente rótulos de exibição.
+    """
+    if sample_rows < 0:
+        raise ValueError("A quantidade de linhas de amostra deve ser não negativa.")
+    probe = stream.read(PROBE_BYTES)
+    if not probe:
+        raise ValueError("Arquivo vazio.")
+    layout = _detect_csv_layout(probe)
+    stream.seek(0)
+    with io.TextIOWrapper(stream, encoding=layout.encoding, newline="") as decoded:
+        reader = csv.reader(decoded, delimiter=layout.delimiter)
+        for _ in range(layout.header_line - 1):
             next(reader, None)
         columns = next(reader, None)
         if columns is None or not any(columns):
             raise ValueError("Cabeçalho ausente ou vazio.")
         if {"DT_NOTIFIC", "ID_MN_RESI", "SEM_PRI"}.issubset(columns):
-            source = "sinan"
-        if source_filter != "all" and source != source_filter:
+            layout.source = "sinan"
+        if source_filter != "all" and layout.source != source_filter:
             return None
-        profile = {
-            "path": label,
-            "size_bytes": size_bytes,
-            "source": source,
-            "encoding": encoding,
-            "encoding_detection": "BOM/UTF-8 verificado; CP1252/Latin-1 heurístico",
-            "delimiter": delimiter,
-            "header_line": header_line,
-            "column_count": len(columns),
-            "columns": columns,
-            "column_labels": [html.unescape(c) for c in columns],
-            "empty_column_positions": [i + 1 for i, c in enumerate(columns) if not c],
-            "duplicate_named_columns": [
-                c for c, count in Counter(columns).items() if c and count > 1
-            ],
-            "metadata": metadata,
-            "sample_rows": [],
-            "row_count": None,
-            "scan_mode": "full_table" if count_rows else "sample",
-            "footer_detected": False,
-        }
-        rows = 0
-        if count_rows or sample_rows:
-            for row in reader:
-                if not row or not any(cell.strip() for cell in row):
-                    continue
-                if source == "ibge" and row[0].lstrip().startswith("<"):
-                    profile["footer_detected"] = True
-                    break
-                if len(row) != len(columns):
-                    raise ValueError(
-                        f"Linha física {reader.line_num}: {len(row)} campos; "
-                        f"esperados {len(columns)}."
-                    )
-                rows += 1
-                if len(profile["sample_rows"]) < sample_rows:
-                    profile["sample_rows"].append(row)
-                if not count_rows and rows >= sample_rows:
-                    break
-        if count_rows:
-            profile["row_count"] = rows
+        profile = _create_csv_profile(layout, columns, label, size_bytes, count_rows=count_rows)
+        _scan_csv_rows(reader, profile, sample_rows=sample_rows, count_rows=count_rows)
         return profile
+
+
+class _FileInspector:
+    """Acumula o relatório enquanto percorre CSVs e arquivos compactados."""
+
+    def __init__(self, result):
+        self.result = result
+        self.options = result["options"]
+
+    def excluded(self, name: str, *, is_archive: bool = False) -> bool:
+        source_filter = self.options["source"]
+        inmet_state = self.options["inmet_state"]
+        hint = source_hint(name)
+        if source_filter != "all" and hint and hint != source_filter:
+            return True
+        if hint == "inmet" and inmet_state and not is_archive:
+            match = re.search(r"INMET_[^_]+_([A-Z]{2})_", name, flags=re.IGNORECASE)
+            if match and match.group(1).upper() != inmet_state:
+                return True
+        return False
+
+    def record_csv(self, stream: BinaryIO, label: str, size: int) -> None:
+        try:
+            profile = inspect_csv(
+                stream, label, size, sample_rows=self.options["sample_rows"],
+                count_rows=self.options["count_rows"], source_filter=self.options["source"],
+            )
+            if profile is None:
+                self.result["skipped_by_filter"] += 1
+            else:
+                self.result["files"].append(profile)
+        except (OSError, UnicodeError, csv.Error, ValueError, zipfile.BadZipFile) as exc:
+            self.result["errors"].append({"path": label, "error": str(exc)})
+
+    def visit_zip(self, archive: zipfile.ZipFile, prefix: str, depth: int) -> None:
+        for member in sorted(archive.infolist(), key=lambda item: item.filename):
+            if member.is_dir():
+                continue
+            suffix = Path(member.filename).suffix.lower()
+            if suffix not in (".csv", ".zip"):
+                continue
+            label = f"{prefix}!{member.filename}"
+            if self.excluded(member.filename, is_archive=suffix == ".zip"):
+                self.result["skipped_by_filter"] += 1
+                continue
+            try:
+                if suffix == ".zip":
+                    self.visit_nested_zip(archive, member, label, depth)
+                else:
+                    with archive.open(member) as stream:
+                        self.record_csv(stream, label, member.file_size)
+            except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
+                self.result["errors"].append({"path": label, "error": str(exc)})
+
+    def visit_nested_zip(self, archive, member, label, depth):
+        if depth >= MAX_ZIP_DEPTH:
+            raise ValueError("Limite de profundidade de ZIPs atingido.")
+        # ZipFile requer acesso aleatório. Acima de 8 MiB, o spool
+        # vai para a pasta temporária e é removido ao fechar.
+        with archive.open(member) as source, tempfile.SpooledTemporaryFile(
+            max_size=ZIP_MEMORY_BYTES
+        ) as spool:
+            shutil.copyfileobj(source, spool, length=1024 * 1024)
+            spool.seek(0)
+            with zipfile.ZipFile(spool) as nested:
+                self.visit_zip(nested, label, depth + 1)
+
+    def visit_path(self, path: Path) -> None:
+        if self.excluded(path.name, is_archive=path.suffix.lower() == ".zip"):
+            self.result["skipped_by_filter"] += 1
+            return
+        try:
+            if path.suffix.lower() == ".zip":
+                with zipfile.ZipFile(path) as archive:
+                    self.visit_zip(archive, str(path), 1)
+            else:
+                with path.open("rb") as stream:
+                    self.record_csv(stream, str(path), path.stat().st_size)
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            self.result["errors"].append({"path": str(path), "error": str(exc)})
+
+
+def _find_candidates(paths: list[Path], errors: list[dict]) -> list[Path]:
+    """Expande diretórios e evita inspecionar o mesmo caminho duas vezes."""
+    candidates: set[Path] = set()
+    for input_path in paths:
+        path = input_path.resolve()
+        if path.is_dir():
+            candidates.update(
+                p for p in path.rglob("*")
+                if p.is_file() and p.suffix.lower() in (".csv", ".zip")
+            )
+        elif path.is_file() and path.suffix.lower() in (".csv", ".zip"):
+            candidates.add(path)
+        else:
+            errors.append(
+                {"path": str(path), "error": "Caminho ausente ou formato diferente de CSV/ZIP."}
+            )
+    return sorted(candidates)
 
 
 def inspect_paths(
@@ -182,87 +306,9 @@ def inspect_paths(
             "No IBGE, a contagem se refere à tabela antes do rodapé HTML.",
         ],
     }
-
-    def excluded(name: str, *, is_archive: bool = False) -> bool:
-        hint = source_hint(name)
-        if source_filter != "all" and hint and hint != source_filter:
-            return True
-        if hint == "inmet" and inmet_state and not is_archive:
-            match = re.search(r"INMET_[^_]+_([A-Z]{2})_", name, flags=re.IGNORECASE)
-            if match and match.group(1).upper() != inmet_state:
-                return True
-        return False
-
-    def record_csv(stream: BinaryIO, label: str, size: int) -> None:
-        try:
-            profile = inspect_csv(
-                stream, label, size, sample_rows=sample_rows,
-                count_rows=count_rows, source_filter=source_filter,
-            )
-            if profile is None:
-                result["skipped_by_filter"] += 1
-            else:
-                result["files"].append(profile)
-        except (OSError, UnicodeError, csv.Error, ValueError, zipfile.BadZipFile) as exc:
-            result["errors"].append({"path": label, "error": str(exc)})
-
-    def visit_zip(archive: zipfile.ZipFile, prefix: str, depth: int) -> None:
-        for member in sorted(archive.infolist(), key=lambda item: item.filename):
-            if member.is_dir():
-                continue
-            suffix = Path(member.filename).suffix.lower()
-            if suffix not in (".csv", ".zip"):
-                continue
-            label = f"{prefix}!{member.filename}"
-            if excluded(member.filename, is_archive=suffix == ".zip"):
-                result["skipped_by_filter"] += 1
-                continue
-            try:
-                if suffix == ".zip":
-                    if depth >= MAX_ZIP_DEPTH:
-                        raise ValueError("Limite de profundidade de ZIPs atingido.")
-                    # ZipFile requer acesso aleatório. Acima de 8 MiB, o spool
-                    # vai para a pasta temporária e é removido ao fechar.
-                    with archive.open(member) as source, tempfile.SpooledTemporaryFile(
-                        max_size=ZIP_MEMORY_BYTES
-                    ) as spool:
-                        shutil.copyfileobj(source, spool, length=1024 * 1024)
-                        spool.seek(0)
-                        with zipfile.ZipFile(spool) as nested:
-                            visit_zip(nested, label, depth + 1)
-                else:
-                    with archive.open(member) as stream:
-                        record_csv(stream, label, member.file_size)
-            except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
-                result["errors"].append({"path": label, "error": str(exc)})
-
-    candidates: set[Path] = set()
-    for input_path in paths:
-        path = input_path.resolve()
-        if path.is_dir():
-            candidates.update(
-                p for p in path.rglob("*")
-                if p.is_file() and p.suffix.lower() in (".csv", ".zip")
-            )
-        elif path.is_file() and path.suffix.lower() in (".csv", ".zip"):
-            candidates.add(path)
-        else:
-            result["errors"].append(
-                {"path": str(path), "error": "Caminho ausente ou formato diferente de CSV/ZIP."}
-            )
-    for path in sorted(candidates):
-        if excluded(path.name, is_archive=path.suffix.lower() == ".zip"):
-            result["skipped_by_filter"] += 1
-            continue
-        try:
-            if path.suffix.lower() == ".zip":
-                with zipfile.ZipFile(path) as archive:
-                    visit_zip(archive, str(path), 1)
-            else:
-                with path.open("rb") as stream:
-                    record_csv(stream, str(path), path.stat().st_size)
-        except (OSError, ValueError, zipfile.BadZipFile) as exc:
-            result["errors"].append({"path": str(path), "error": str(exc)})
+    inspector = _FileInspector(result)
+    for path in _find_candidates(paths, result["errors"]):
+        inspector.visit_path(path)
     result["inspected_csv_count"] = len(result["files"])
     result["source_counts"] = dict(Counter(item["source"] for item in result["files"]))
     return result

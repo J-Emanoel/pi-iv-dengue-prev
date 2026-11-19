@@ -6,6 +6,7 @@ import json
 import re
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -63,6 +64,15 @@ class FonteCarga:
 
     registros: list[dict]
     anos: list[int]
+
+
+@dataclass(frozen=True)
+class CargaPreparada:
+    """Fonte já validada, operação correspondente e resumo para conferência."""
+
+    fonte: object
+    sincronizar: Callable
+    resumo: str
 
 
 def carregar_fonte(caminho_csv=DEFAULT_CSV, caminho_resumo=DEFAULT_SUMMARY):
@@ -504,7 +514,8 @@ def sincronizar_atualizacao_2026(engine, fonte, clima, vinculos, *, backup_dir=D
     return resultado
 
 
-def main(argv=None):
+def criar_parser():
+    """Declara os modos de carga; nenhum deles aplica alterações por padrão."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
     parser.add_argument("--resumo", type=Path)
@@ -520,73 +531,87 @@ def main(argv=None):
     parser.add_argument("--estacoes", type=Path, default=ESTACOES_CSV, help="CSV de estações, utilizado no modo --clima.")
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP)
     parser.add_argument("--aplicar", action="store_true", help="Sincroniza o banco configurado em DATABASE_URL.")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def _preparar_carga(args) -> CargaPreparada:
+    """Associa cada fonte ao seu sincronizador no mesmo ponto do código."""
+    if args.sesa:
+        fonte = carregar_serie_sesa(args.input or CANDIDATA_CSV, args.resumo or RESUMO_AVALIACAO)
+        resumo = f"Série estadual validada: {len(fonte)} agregados; {sum(row['registros_notificados'] for row in fonte)} registros por notificação."
+        return CargaPreparada(fonte, sincronizar_sesa, resumo)
+    if args.vinculos:
+        fonte = carregar_vinculos(args.input or VINCULOS_CSV, args.resumo or VINCULOS_RESUMO)
+        resumo = f"Vínculos validados: {len(fonte)} associações anuais por proximidade geográfica."
+        return CargaPreparada(fonte, sincronizar_vinculos, resumo)
+    if args.clima:
+        fonte = carregar_clima(args.input or CLIMA_CSV, args.resumo or CLIMA_RESUMO, args.estacoes)
+        resumo = f"Clima validado: {len(fonte[0])} estações; {len(fonte[1])} semanas. Vínculos municipais são carregados com --vinculos."
+        return CargaPreparada(fonte, sincronizar_clima, resumo)
+    if args.populacao:
+        fonte = carregar_populacao(args.input or DEFAULT_POP_CSV, args.resumo or DEFAULT_POP_SUMMARY)
+        resumo = f"População validada: {len(fonte)} registros por município/ano, com referências documentadas."
+        return CargaPreparada(fonte, sincronizar_populacoes, resumo)
+    if args.municipios:
+        fonte = carregar_cadastro(args.input or DEFAULT_CADASTRO_CSV, args.resumo or DEFAULT_CADASTRO_SUMMARY)
+        resumo = f"Cadastro nominal validado: {len(fonte)} municípios; população preservada."
+        return CargaPreparada(fonte, sincronizar_municipios, resumo)
+    fonte = carregar_fonte(args.input or DEFAULT_CSV, args.resumo or DEFAULT_SUMMARY)
+    if args.input is None and 2026 in fonte.anos:
+        raise ValueError("Regere o histórico com pipelines.etl_sinan (2020–2025). Atualize 2026 pelo modo --atualizacao-2026 para não restaurar a extração antiga.")
+    resumo = (f"Fonte validada: {len(fonte.registros)} linhas; "
+              f"{sum(r['quantidade_casos'] for r in fonte.registros)} registros; anos {fonte.anos}.")
+    return CargaPreparada(fonte, sincronizar_casos, resumo)
+
+
+def _executar_carga(args):
+    carga = _preparar_carga(args)
+    print(carga.resumo)
+    if not args.aplicar:
+        print("Conferência concluída. Para sincronizar o banco, execute com --aplicar.")
+        return
+    resultado = carga.sincronizar(get_engine(), carga.fonte, backup_dir=args.backup_dir)
+    print(json.dumps(resultado, ensure_ascii=False, indent=2))
+
+
+def _executar_atualizacao_2026(args):
+    """Mantém a atualização anual na operação conjunta com transação única."""
+    fonte = carregar_fonte(args.input or ATUALIZACAO_CSV, args.resumo or ATUALIZACAO_RESUMO)
+    clima = carregar_clima(caminho_estacoes=args.estacoes)
+    vinculos = carregar_vinculos()
+    if fonte.anos != [2026]:
+        raise ValueError("Informe o CSV anual de 2026, separado do histórico original.")
+    print(f"Atualização validada: {len(fonte.registros)} agregados SINAN; {len(clima[1])} semanas de estação; {len(vinculos)} vínculos.")
+    if not args.aplicar:
+        print("Conferência concluída sem conexão. Use --aplicar para a carga conjunta com backup e transação.")
+        return
+    resultado = sincronizar_atualizacao_2026(get_engine(), fonte, clima, vinculos, backup_dir=args.backup_dir)
+    print(json.dumps(resultado, ensure_ascii=False, indent=2))
+
+
+def _executar_analitica(args):
+    if args.input or args.resumo:
+        raise ValueError("O modo --analitica consulta as tabelas; não recebe CSV ou resumo.")
+    fonte = "sesa" if args.analitica_sesa else "sinan"
+    semanas = [row for row in gerar_calendario() if not args.analitica_sesa or row["ano"] in ANOS_SESA]
+    print(f"Calendário validado: {len(semanas)} semanas; fonte {fonte}; visão com lacunas preservadas.")
+    if not args.aplicar:
+        print("Conferência concluída sem conexão. Para preparar a visão no banco, use --aplicar.")
+        return
+    resultado = preparar_base_analitica(get_engine(), fonte=fonte)
+    print(json.dumps(resultado, ensure_ascii=False, indent=2))
+
+
+def main(argv=None):
+    """Escolhe o fluxo solicitado e apresenta erros sem detalhes da conexão."""
+    args = criar_parser().parse_args(argv)
     try:
         if args.atualizacao_2026:
-            fonte = carregar_fonte(args.input or ATUALIZACAO_CSV, args.resumo or ATUALIZACAO_RESUMO)
-            clima = carregar_clima(caminho_estacoes=args.estacoes)
-            vinculos = carregar_vinculos()
-            if fonte.anos != [2026]:
-                raise ValueError("Informe o CSV anual de 2026, separado do histórico original.")
-            print(f"Atualização validada: {len(fonte.registros)} agregados SINAN; {len(clima[1])} semanas de estação; {len(vinculos)} vínculos.")
-            if not args.aplicar:
-                print("Conferência concluída sem conexão. Use --aplicar para a carga conjunta com backup e transação.")
-                return 0
-            resultado = sincronizar_atualizacao_2026(get_engine(), fonte, clima, vinculos, backup_dir=args.backup_dir)
-            print(json.dumps(resultado, ensure_ascii=False, indent=2))
-            return 0
-        if args.analitica or args.analitica_sesa:
-            if args.input or args.resumo:
-                raise ValueError("O modo --analitica consulta as tabelas; não recebe CSV ou resumo.")
-            fonte = "sesa" if args.analitica_sesa else "sinan"
-            semanas = [row for row in gerar_calendario() if not args.analitica_sesa or row["ano"] in ANOS_SESA]
-            print(f"Calendário validado: {len(semanas)} semanas; fonte {fonte}; visão com lacunas preservadas.")
-            if not args.aplicar:
-                print("Conferência concluída sem conexão. Para preparar a visão no banco, use --aplicar.")
-                return 0
-            resultado = preparar_base_analitica(get_engine(), fonte=fonte)
-            print(json.dumps(resultado, ensure_ascii=False, indent=2))
-            return 0
-        if args.sesa:
-            fonte = carregar_serie_sesa(args.input or CANDIDATA_CSV, args.resumo or RESUMO_AVALIACAO)
-            print(f"Série estadual validada: {len(fonte)} agregados; {sum(row['registros_notificados'] for row in fonte)} registros por notificação.")
-        elif args.vinculos:
-            fonte = carregar_vinculos(args.input or VINCULOS_CSV, args.resumo or VINCULOS_RESUMO)
-            print(f"Vínculos validados: {len(fonte)} associações anuais por proximidade geográfica.")
-        elif args.clima:
-            fonte = carregar_clima(args.input or CLIMA_CSV, args.resumo or CLIMA_RESUMO, args.estacoes)
-            print(f"Clima validado: {len(fonte[0])} estações; {len(fonte[1])} semanas. Vínculos municipais são carregados com --vinculos.")
-        elif args.populacao:
-            fonte = carregar_populacao(args.input or DEFAULT_POP_CSV, args.resumo or DEFAULT_POP_SUMMARY)
-            print(f"População validada: {len(fonte)} registros por município/ano, com referências documentadas.")
-        elif args.municipios:
-            fonte = carregar_cadastro(
-                args.input or DEFAULT_CADASTRO_CSV, args.resumo or DEFAULT_CADASTRO_SUMMARY,
-            )
-            print(f"Cadastro nominal validado: {len(fonte)} municípios; população preservada.")
+            _executar_atualizacao_2026(args)
+        elif args.analitica or args.analitica_sesa:
+            _executar_analitica(args)
         else:
-            fonte = carregar_fonte(args.input or DEFAULT_CSV, args.resumo or DEFAULT_SUMMARY)
-            if args.input is None and 2026 in fonte.anos:
-                raise ValueError("Regere o histórico com pipelines.etl_sinan (2020–2025). Atualize 2026 pelo modo --atualizacao-2026 para não restaurar a extração antiga.")
-            print(f"Fonte validada: {len(fonte.registros)} linhas; "
-                  f"{sum(r['quantidade_casos'] for r in fonte.registros)} registros; anos {fonte.anos}.")
-        if not args.aplicar:
-            print("Conferência concluída. Para sincronizar o banco, execute com --aplicar.")
-            return 0
-        if args.sesa:
-            sincronizar = sincronizar_sesa
-        elif args.vinculos:
-            sincronizar = sincronizar_vinculos
-        elif args.clima:
-            sincronizar = sincronizar_clima
-        elif args.populacao:
-            sincronizar = sincronizar_populacoes
-        elif args.municipios:
-            sincronizar = sincronizar_municipios
-        else:
-            sincronizar = sincronizar_casos
-        result = sincronizar(get_engine(), fonte, backup_dir=args.backup_dir)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+            _executar_carga(args)
         return 0
     except (ValueError, OSError, DatabaseConfigurationError) as exc:
         print(f"Erro: {exc}", file=sys.stderr)

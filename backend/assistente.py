@@ -11,8 +11,11 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from backend.ferramentas_ia import definicoes_ferramentas
-from backend.schemas import AssistenteResponse, ConfiguracaoAssistenteResponse, UsoAssistenteResponse, ReferenciaDocumentoResponse
+from backend.ferramentas_ia import FerramentasIA, definicoes_ferramentas
+from backend.schemas import (
+    AssistenteRequest, AssistenteResponse, ConfiguracaoAssistenteResponse,
+    ConsultaAssistenteResponse, ReferenciaDocumentoResponse, UsoAssistenteResponse,
+)
 
 URL_COMPLETIONS = "https://api.groq.com/openai/v1/chat/completions"
 MAX_RODADAS = 5
@@ -97,18 +100,31 @@ def status_configuracao():
 
 
 class ClienteGroq:
+    """Encapsula o protocolo HTTP, as retentativas e a contagem de tokens."""
+
     def __init__(self, chave, modelo, http_client=None):
         self._chave = chave
         self.modelo = modelo
         self.uso = UsoAssistenteResponse()
         self.http = http_client or httpx.Client(timeout=httpx.Timeout(20, connect=10), follow_redirects=False)
 
-    def completar(self, mensagens, ferramentas, *, escolha="auto"):
+    def completar(self, mensagens, ferramentas, *, escolha="auto") -> MensagemLLM:
+        """Envia uma rodada e devolve somente uma mensagem completa e validada."""
+        payload = self._montar_payload(mensagens, ferramentas, escolha)
+        response = self._enviar(payload, escolha)
+        self._validar_status(response)
+        return self._ler_resposta(response)
+
+    def _montar_payload(self, mensagens, ferramentas, escolha):
         payload = dict(model=self.modelo, messages=mensagens, tools=ferramentas,
                        tool_choice=escolha, parallel_tool_calls=False, temperature=0,
                        max_completion_tokens=2048)
         if self.modelo.startswith("openai/gpt-oss-"):
             payload.update(reasoning_effort="low", include_reasoning=False)
+        return payload
+
+    def _enviar(self, payload, escolha):
+        """Repete apenas falhas recuperáveis, respeitando o prazo do provedor."""
         try:
             for tentativa in range(MAX_TENTATIVAS_HTTP):
                 self.uso.chamadas_api += 1
@@ -119,29 +135,36 @@ class ClienteGroq:
                 if espera is None or tentativa == MAX_TENTATIVAS_HTTP - 1:
                     break
                 if falha_funcao:
-                    nomes = {t["function"]["name"] for t in ferramentas}
-                    orientacao = ("Responda em texto, sem chamar funções." if escolha == "none" else
-                        "A chamada anterior não foi aceita. Use exatamente um destes nomes: " + ", ".join(sorted(nomes)) + ". Informe argumentos JSON conforme o esquema.")
-                    nome_corrigido = self._nome_corrigido(response)
-                    if escolha != "none" and nome_corrigido in nomes:
-                        payload = {**payload, "tool_choice": dict(type="function", function=dict(name=nome_corrigido))}
-                        orientacao = f"A função solicitada chama-se exatamente {nome_corrigido}. Chame-a usando esse nome e o esquema declarado."
-                    elif (escolha == "auto" and self.modelo.startswith("openai/gpt-oss-")
-                          and not any(m.get("role") == "tool" for m in mensagens)):
-                        # Sem dados consultados, a alternativa só classifica o pedido.
-                        # O esquema não permite texto livre nem fatos sem uma função válida.
-                        payload = {k: v for k, v in payload.items() if k not in ("tools", "tool_choice", "parallel_tool_calls")}
-                        payload.update(max_completion_tokens=256, response_format=dict(type="json_schema",
-                            json_schema=dict(name="motivo_sem_consulta", strict=True, schema=RespostaSemConsulta.model_json_schema())))
-                        orientacao = ("Classifique o pedido, sem executar funções. Use escrita para pedidos de alterar/excluir o banco; "
-                            "soma_fontes para somar SINAN e SESA; fora_escopo para assuntos alheios; faltam_parametros se faltarem município/período; "
-                            "consulta_necessaria para uma consulta legítima que exige dados. Retorne somente o JSON motivo do esquema, sem informações adicionais.")
-                    payload = {**payload, "messages": [*payload["messages"], dict(role="system", content=orientacao)]}
+                    payload = self._corrigir_chamada(payload, response, escolha)
                 time.sleep(espera)
         except httpx.TimeoutException:
             raise ErroAssistente("O Groq demorou a responder. Tente novamente mais tarde.", 504) from None
         except httpx.RequestError:
             raise ErroAssistente("Não foi possível conectar ao Groq.") from None
+        return response
+
+    def _corrigir_chamada(self, payload, response, escolha):
+        """Pede uma nova geração; nunca executa argumentos de uma chamada rejeitada."""
+        nomes = {t["function"]["name"] for t in payload["tools"]}
+        orientacao = ("Responda em texto, sem chamar funções." if escolha == "none" else
+            "A chamada anterior não foi aceita. Use exatamente um destes nomes: " + ", ".join(sorted(nomes)) + ". Informe argumentos JSON conforme o esquema.")
+        nome_corrigido = self._nome_corrigido(response)
+        if escolha != "none" and nome_corrigido in nomes:
+            payload = {**payload, "tool_choice": dict(type="function", function=dict(name=nome_corrigido))}
+            orientacao = f"A função solicitada chama-se exatamente {nome_corrigido}. Chame-a usando esse nome e o esquema declarado."
+        elif (escolha == "auto" and self.modelo.startswith("openai/gpt-oss-")
+              and not any(m.get("role") == "tool" for m in payload["messages"])):
+            # Sem dados consultados, a alternativa só classifica o pedido.
+            # O esquema não permite texto livre nem fatos sem uma função válida.
+            payload = {k: v for k, v in payload.items() if k not in ("tools", "tool_choice", "parallel_tool_calls")}
+            payload.update(max_completion_tokens=256, response_format=dict(type="json_schema",
+                json_schema=dict(name="motivo_sem_consulta", strict=True, schema=RespostaSemConsulta.model_json_schema())))
+            orientacao = ("Classifique o pedido, sem executar funções. Use escrita para pedidos de alterar/excluir o banco; "
+                "soma_fontes para somar SINAN e SESA; fora_escopo para assuntos alheios; faltam_parametros se faltarem município/período; "
+                "consulta_necessaria para uma consulta legítima que exige dados. Retorne somente o JSON motivo do esquema, sem informações adicionais.")
+        return {**payload, "messages": [*payload["messages"], dict(role="system", content=orientacao)]}
+
+    def _validar_status(self, response):
         if response.status_code != 200:
             # Corpo/headers do erro não são repassados: podem conter detalhes da conta.
             if response.status_code == 429:
@@ -151,6 +174,8 @@ class ClienteGroq:
             if self._falha_funcao(response):
                 raise ErroAssistente("O modelo não conseguiu concluir uma chamada de função válida. Divida a pergunta em partes menores.", 502)
             raise ErroAssistente("O Groq não concluiu a solicitação. Confira disponibilidade e compatibilidade do modelo.", 502)
+
+    def _ler_resposta(self, response) -> MensagemLLM:
         try:
             dados = response.json()
             if not isinstance(dados, dict):
@@ -218,12 +243,18 @@ def get_cliente_groq():
         cliente.close()
 
 
-def referencias_recuperadas(consultas):
-    return {r["id"]: r for c in consultas if c.ferramenta == "consultar_documentos" and c.sucesso
-        for r in c.resultado.get("trechos", [])}
+def referencias_recuperadas(consultas: list[ConsultaAssistenteResponse]) -> dict[str, dict]:
+    """Reúne somente os trechos obtidos com sucesso durante esta solicitação."""
+    return {
+        trecho["id"]: trecho
+        for consulta in consultas
+        if consulta.ferramenta == "consultar_documentos" and consulta.sucesso
+        for trecho in consulta.resultado.get("trechos", [])
+    }
 
 
 def validar_referencias(resposta, recuperadas):
+    """Confere IDs e URLs antes de liberar o texto e seus links para a API."""
     ids_mencionados = re.findall(r"\bR\d{3}\b", resposta)
     if any(c not in recuperadas for c in ids_mencionados):
         raise ErroAssistente("O assistente citou um trecho que não foi recuperado.", 502)
@@ -239,59 +270,88 @@ def validar_referencias(resposta, recuperadas):
     return [ReferenciaDocumentoResponse.model_validate(recuperadas[c]) for c in citadas]
 
 
-def conversar(pedido, cliente, ferramentas):
+def _mensagens_iniciais(pedido: AssistenteRequest) -> list[dict]:
     instante = datetime.now(timezone.utc).isoformat()
     mensagens = [dict(role="system", content=INSTRUCOES +
         f"\nFonte padrão desta solicitação: {pedido.fonte}. Data da solicitação em UTC: {instante}.")]
     mensagens.extend(m.model_dump() for m in pedido.historico)
     mensagens.append(dict(role="user", content=pedido.pergunta))
+    return mensagens
+
+
+def _orientar_rodada(mensagens, consultas, *, finalizar):
+    if finalizar:
+        mensagens.append(dict(role="system", content="Finalize usando somente os resultados já recebidos. Não solicite outras funções. Se faltar informação, explique a limitação sem inventar valores."))
+    disponiveis = referencias_recuperadas(consultas)
+    if disponiveis:
+        marcadores = " ".join(f"[{identificador}]" for identificador in disponiveis)
+        mensagens.append(dict(role="system", content=f"Na resposta final, cite as afirmações documentais usando estes marcadores exatos: {marcadores}. Inclua ao menos um marcador e apenas fontes que sustentem a afirmação. Não acrescente URLs; o backend fornece os links verificados."))
+
+
+def _preparar_resposta(mensagem: MensagemLLM, consultas):
+    """Exige dados válidos ou substitui a classificação por uma recusa fixa."""
+    resposta = mensagem.content or ""
+    recuperadas = referencias_recuperadas(consultas)
+    try:
+        motivo = RespostaSemConsulta.model_validate_json(resposta).motivo
+    except ValidationError:
+        motivo = None
+    if motivo in RESPOSTAS_SEM_CONSULTA:
+        return RESPOSTAS_SEM_CONSULTA[motivo], {}
+    if any(c.ferramenta == "consultar_documentos" for c in consultas) and not recuperadas:
+        return RESPOSTAS_SEM_CONSULTA["sem_base_documental"], recuperadas
+    if not any(c.sucesso for c in consultas) or motivo == "consulta_necessaria":
+        raise ErroAssistente("O assistente não obteve dados válidos pelas funções do projeto. Reformule a pergunta ou confira os dados disponíveis.", 502)
+    if not resposta.strip():
+        raise ErroAssistente("O assistente retornou uma resposta vazia.", 502)
+    return resposta, recuperadas
+
+
+def _solicitar_correcao_referencias(mensagens, mensagem):
+    mensagens.append(mensagem.model_dump(exclude_none=True))
+    mensagens.append(dict(role="system", content="A resposta anterior não passou na validação das referências. Reescreva com os IDs exatos dos trechos já recebidos e sem links extras. Não faça novas consultas nem acrescente fatos sem suporte."))
+
+
+def _executar_chamadas(chamadas, ferramentas, mensagens, consultas, ids, *, fonte):
+    """Executa a lista autorizada e devolve os resultados ao contexto da LLM."""
+    for chamada in chamadas:
+        if chamada.id in ids:
+            raise ErroAssistente("O modelo retornou identificadores de consulta repetidos.", 502)
+        ids.add(chamada.id)
+        consulta = ferramentas.executar(chamada.function.name, chamada.function.arguments, fonte_padrao=fonte)
+        consultas.append(consulta)
+        mensagens.append(dict(role="tool", tool_call_id=chamada.id,
+            content=json.dumps(consulta.resultado, ensure_ascii=False, allow_nan=False)))
+
+
+def conversar(pedido: AssistenteRequest, cliente: ClienteGroq, ferramentas: FerramentasIA) -> AssistenteResponse:
+    """Orquestra as rodadas: consulta local, resposta fundamentada e referências.
+
+    Os limites incluem a rodada de encerramento e permitem somente uma correção
+    documental. O transporte HTTP e a execução das ferramentas ficam separados.
+    """
+    mensagens = _mensagens_iniciais(pedido)
     consultas, ids = [], set()
     corrigiu_referencias = False
     definicoes = definicoes_ferramentas()
     for rodada in range(MAX_RODADAS):
         escolha = "none" if rodada == MAX_RODADAS - 1 or corrigiu_referencias else "auto"
-        if escolha == "none":
-            mensagens.append(dict(role="system", content="Finalize usando somente os resultados já recebidos. Não solicite outras funções. Se faltar informação, explique a limitação sem inventar valores."))
-        disponiveis = referencias_recuperadas(consultas)
-        if disponiveis:
-            marcadores = " ".join(f"[{identificador}]" for identificador in disponiveis)
-            mensagens.append(dict(role="system", content=f"Na resposta final, cite as afirmações documentais usando estes marcadores exatos: {marcadores}. Inclua ao menos um marcador e apenas fontes que sustentem a afirmação. Não acrescente URLs; o backend fornece os links verificados."))
+        _orientar_rodada(mensagens, consultas, finalizar=escolha == "none")
         mensagem = cliente.completar(mensagens, definicoes, escolha=escolha)
         if not mensagem.tool_calls:
-            resposta = mensagem.content or ""
-            recuperadas = referencias_recuperadas(consultas)
-            try:
-                motivo = RespostaSemConsulta.model_validate_json(resposta).motivo
-            except ValidationError:
-                motivo = None
-            if motivo in RESPOSTAS_SEM_CONSULTA:
-                resposta, recuperadas = RESPOSTAS_SEM_CONSULTA[motivo], {}
-            elif any(c.ferramenta == "consultar_documentos" for c in consultas) and not recuperadas:
-                resposta = RESPOSTAS_SEM_CONSULTA["sem_base_documental"]
-            elif not any(c.sucesso for c in consultas) or motivo == "consulta_necessaria":
-                raise ErroAssistente("O assistente não obteve dados válidos pelas funções do projeto. Reformule a pergunta ou confira os dados disponíveis.", 502)
-            elif not resposta.strip():
-                raise ErroAssistente("O assistente retornou uma resposta vazia.", 502)
+            resposta, recuperadas = _preparar_resposta(mensagem, consultas)
             try:
                 referencias = validar_referencias(resposta, recuperadas)
             except ErroAssistente:
                 if not recuperadas or corrigiu_referencias or rodada == MAX_RODADAS - 1:
                     raise
                 corrigiu_referencias = True
-                mensagens.append(mensagem.model_dump(exclude_none=True))
-                mensagens.append(dict(role="system", content="A resposta anterior não passou na validação das referências. Reescreva com os IDs exatos dos trechos já recebidos e sem links extras. Não faça novas consultas nem acrescente fatos sem suporte."))
+                _solicitar_correcao_referencias(mensagens, mensagem)
                 continue
             return AssistenteResponse(resposta=resposta, modelo_llm=cliente.modelo, consultas=consultas,
                 uso=getattr(cliente, "uso", None), referencias=referencias)
         if rodada == MAX_RODADAS - 1 or len(consultas) + len(mensagem.tool_calls) > MAX_CHAMADAS:
             break
         mensagens.append(mensagem.model_dump(exclude_none=True))
-        for chamada in mensagem.tool_calls:
-            if chamada.id in ids:
-                raise ErroAssistente("O modelo retornou identificadores de consulta repetidos.", 502)
-            ids.add(chamada.id)
-            consulta = ferramentas.executar(chamada.function.name, chamada.function.arguments, fonte_padrao=pedido.fonte)
-            consultas.append(consulta)
-            mensagens.append(dict(role="tool", tool_call_id=chamada.id,
-                content=json.dumps(consulta.resultado, ensure_ascii=False, allow_nan=False)))
+        _executar_chamadas(mensagem.tool_calls, ferramentas, mensagens, consultas, ids, fonte=pedido.fonte)
     raise ErroAssistente("O assistente atingiu o limite de consultas. Divida a pergunta em partes menores.", 502)
