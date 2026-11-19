@@ -1,0 +1,19 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    ".venv": true,
+    "venv": true,
+    ".tools": true,
+    "data": true,
+    "ml/models": true,
+    "arquivos-proj-int-iv.zip": true,
+    "DENGBR26.csv.zip": true,
+    "2026.zip": true
+  }
+}

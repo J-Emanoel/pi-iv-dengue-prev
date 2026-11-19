@@ -118,8 +118,10 @@ continuam usando provedor simulado. A suíte local final passou com 171 testes e
 58 subtestes. Há um aviso de depreciação do Starlette sobre seu cliente de testes;
 nenhuma dependência nova foi instalada naquela validação inicial de function calling.
 
-Respostas completas e rastros ficam em `data/processed/avaliacao_assistente/`,
-ignorados pelo Git. O resumo de resultados fica neste documento. Tokens
+Respostas completas e rastros foram arquivados no ZIP local
+`data/interim/historico-desenvolvimento.zip`, sob o caminho interno
+`data/processed/avaliacao_assistente/`. O ZIP é ignorado pelo Git; o resumo de
+resultados fica neste documento. Tokens
 referem-se somente ao `usage` informado nas respostas recebidas; falhas HTTP
 podem ter consumo adicional não informado. O painel Usage do Groq é a referência
 para o consumo total da conta.
@@ -194,7 +196,9 @@ de acesso. Somente o cliente Groq e a base documental local foram utilizados.
 As quatro respostas Groq informaram `usage`; o 502 inicial veio do validador local.
 Esse consumo é separado dos 38.544 tokens informados na etapa anterior.
 As chamadas externas foram encerradas após o reteste. Resultados completos
-e a verificação adicional ficam em `data/processed/avaliacao_rag/`, ignorados pelo Git.
+e a verificação adicional foram arquivados em
+`data/interim/historico-desenvolvimento.zip`, sob o caminho interno
+`data/processed/avaliacao_rag/`. Esse histórico local é ignorado pelo Git.
 
 Os controles asseguram que as referências apontem para trechos recuperados;
 não provam que cada frase esteja semanticamente sustentada. A fidelidade foi

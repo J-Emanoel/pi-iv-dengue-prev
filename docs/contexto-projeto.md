@@ -568,11 +568,13 @@ e referências, seguido de integração, testes de uso e publicação.
 
 ## Acompanhar a implementação
 
-O estado atual, o papel dos arquivos e os comandos de execução ficam no
-[README principal](../README.md). Este documento concentra o planejamento
-e as decisões que orientam as próximas etapas.
+A apresentação e a arquitetura ficam no [README principal](../README.md).
+O [guia dos fontes](guia-codigo.md) explica o papel dos arquivos, e o
+[guia de execução](execucao.md) reúne os procedimentos operacionais.
+Este documento concentra o planejamento, o checklist e as decisões que
+orientam as próximas etapas.
 
 Código, documentação e inventários são versionados. Datasets grandes,
 artefatos de modelos, senhas e chaves ficam fora dos commits. O compartilhamento
-dos originais será feito por Releases, conforme o README principal; Git LFS
+dos originais é organizado por Releases, conforme o guia de execução; Git LFS
 não será usado inicialmente.
