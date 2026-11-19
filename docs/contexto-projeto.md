@@ -69,8 +69,8 @@ foi adaptada para GPT-OSS 120B no mesmo provedor, devido à retirada dos IDs Lla
 dos planos Free/Developer, conforme a [documentação Groq](https://console.groq.com/docs/deprecations).
 O material de apoio do professor permite modelos abertos pelo Groq. A LLM
 consultará serviços do backend e explicará resultados estruturados. Os cálculos e as previsões ficarão no
-backend e no ML. O RAG será acrescentado para consultas fundamentadas em
-documentos oficiais, separado da previsão.
+backend e no ML. O RAG inicial consulta trechos de documentos oficiais para
+respostas conceituais e preventivas, separado da previsão.
 
 Os resultados serão apresentados como estimativa do modelo, tendência
 estimada ou nível de atenção estimado. A aplicação não oferece diagnóstico
@@ -116,8 +116,14 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 - [x] Infraestrutura de function calling e ferramentas de leitura com testes de protocolo/argumentos.
 - [x] Chave Groq validada no catálogo e GPT-OSS 120B configurado localmente.
 - [x] Inferência real via Groq e avaliação inicial das respostas com a conta utilizada.
-- [ ] RAG fundamentado em documentos oficiais.
-- [ ] Interface React/Vite integrada e aplicação publicada e testada.
+- [x] RAG inicial com documentos oficiais, busca local, referências verificáveis e avaliação inicial.
+- [ ] Ampliar a avaliação da IA: fidelidade aos dados/trechos, paráfrases, recusas clínicas e instruções indevidas em documentos.
+- [ ] Construir a interface React/Vite com filtros, indicadores, mapa, histórico, ranking e comparação municipal.
+- [ ] Integrar previsões, indisponibilidades, datas de referência, assistente e referências documentais à interface.
+- [ ] Testar os fluxos completos entre interface, API, banco, ML e Groq, incluindo falhas e limites de uso.
+- [ ] Preparar hospedagem, artefatos ML, variáveis de ambiente e controle de consumo da IA para publicação.
+- [ ] Publicar o MVP e conferir o acesso e os fluxos no ambiente publicado.
+- [ ] Consolidar documentação, reprodução do projeto, avaliações e limitações para a entrega final.
 
 ### O que já funciona
 
@@ -155,7 +161,7 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 | 4. Base analítica e backend — concluído | Calendário semanal e visão integrada no Supabase; consultas de indicadores e presença das fontes. | 28.548 chaves únicas, contagens preservadas e ausência diferenciada de zero; conferido no PostgreSQL. |
 | 5. Machine Learning e serviço — implementados | Experimentos SESA e SINAN separados, com consultas por fonte e período. | Resultados e limitações documentados; persistência selecionada, sem ganho sobre a referência. |
 | 6. LLM/function calling | Assistente consultando funções reais do backend. | Respostas conferidas contra resultados das funções, com parâmetros validados. |
-| 7. RAG | Consulta a documentos oficiais com recuperação de trechos e referências. | Fontes rastreáveis e avaliação de respostas fundamentadas. |
+| 7. RAG — implementação inicial concluída | Consulta a documentos oficiais com recuperação local de trechos e referências. | Fontes rastreáveis e avaliação inicial, com limites de recuperação registrados. |
 | 8. Interface web e publicação | React/Vite em `frontend/`, integração e publicação dos serviços. | Fluxo completo testado no ambiente publicado, com configuração documentada. |
 
 Cada etapa será implementada e verificada antes da seguinte. A etapa 2 define
@@ -483,11 +489,11 @@ reproduzi-los com os dois comandos de preparação/treinamento do README. Sem
 artefatos compatíveis, as rotas de previsão respondem 503 e orientam a geração,
 enquanto as consultas ao banco e `/health` permanecem independentes.
 
-**LLM e RAG:** conectar o assistente aos serviços implementados para consultar
-histórico, indicadores e previsões. Cálculos permanecem no backend; a LLM
-explica resultados. Na etapa RAG, selecionar documentos oficiais, preparar a
-recuperação e apresentar referências. Avaliar separadamente respostas de
-consulta de dados e respostas fundamentadas em documentos.
+**LLM e RAG:** o assistente consulta os serviços de histórico, indicadores,
+previsões e recuperação documental inicial. Cálculos permanecem no backend;
+a LLM explica resultados e cita os trechos recuperados. Ampliar a avaliação
+separada de respostas de dados e respostas documentais durante a integração
+da interface e antes da publicação.
 
 **Interface e publicação:** criar a interface React/Vite com ferramentas
 Node.js, consumindo a API Python. Integrar histórico, indicadores, previsões e
@@ -497,7 +503,8 @@ compartilhado. Credenciais e chaves dos provedores permanecem no backend.
 ### Continuidade até a entrega final
 
 O backend agora expõe `/assistente/status` e `POST /assistente`. As ferramentas
-consultam cadastro, histórico, comparação por semanas comuns, modelo e previsões.
+consultam cadastro, histórico, comparação por semanas comuns, modelo, previsões
+e trechos de documentos oficiais.
 Os testes simulam o protocolo do provedor e não demonstram seleção correta de
 ferramentas ou fidelidade de uma LLM real. GROQ_API_KEY/GROQ_MODEL estão
 configurados nesta máquina; a consulta autenticada ao catálogo retornou 200.
@@ -524,9 +531,40 @@ preservados. A integração LLM deverá consultar fonte e datas explicitamente.
 
 A inferência e as primeiras consultas reais do assistente GPT-OSS via Groq
 foram conferidas com os serviços de dados e previsões. A interpretação deve
-respeitar lacunas, seleção de amostras e revisões históricas. Em seguida,
-completar RAG, interface e publicação.
+respeitar lacunas, seleção de amostras e revisões históricas. O RAG inicial está
+implementado; seguem interface, ampliação da avaliação e publicação.
 O progresso de cada entrega será conferido contra o checklist acima.
+
+### RAG inicial implementado em 18/11/2026
+
+O relatório inicial prevê documentos oficiais para respostas conceituais e
+preventivas, sem impor uma biblioteca de embeddings. A implementação usa
+TF-IDF de palavras e caracteres com scikit-learn local. O Groq recebe apenas
+os trechos selecionados, com IDs, edição, página e fonte. Os cálculos preditivos
+continuam nos serviços existentes.
+
+A base `docs/base-documental.json` contém 18 trechos, extraídos de recortes de
+duas obras do Ministério da Saúde (2025 e 2024), sob CC BY-NC-SA 4.0. O arquivo
+pequeno acompanha o código; PDFs completos e resultados de execução ficam em
+`data/`, fora do Git. A preparação reproduz e confere os recortes com SHA-256.
+
+`GET /documentos` e `GET /documentos/busca` funcionam sem banco ou Groq.
+`consultar_documentos` integra essa recuperação ao function calling. A resposta
+da API inclui `referencias`, construída com os trechos efetivamente citados.
+IDs inventados, links externos e ausência de citações são bloqueados; uma
+correção limitada pode reutilizar o contexto já recuperado.
+
+O teste real sobre controle mecânico retornou citações válidas para as páginas
+PDF 52 e 133 (impressas 51 e 132) das Diretrizes de 2025. A primeira tentativa
+foi bloqueada por ausência de referências reconhecidas; após reforçar o formato,
+o reteste passou. As duas tentativas consumiram 8.634 tokens informados em quatro
+requisições ao Groq. A validação adicional de recuperação teve cinco resultados
+esperados em seis perguntas; a formulação sobre verão não recuperou a página
+de prevenção durante todo o ano. A busca lexical e a fidelidade das respostas
+permanecem pontos de avaliação, sem promessa de ausência de alucinações.
+
+O próximo bloco é a interface React/Vite, com histórico, previsões, assistente
+e referências, seguido de integração, testes de uso e publicação.
 
 ## Acompanhar a implementação
 

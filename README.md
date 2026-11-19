@@ -107,6 +107,9 @@ Ausência de registro não foi convertida em zero.
 | `backend/previsoes.py` | Confere o experimento salvo e serve estimativas com datas, elegibilidade e limitações. |
 | `backend/ferramentas_ia.py` | Define consultas permitidas à LLM e valida argumentos, fontes, períodos e municípios. |
 | `backend/assistente.py` | Conecta a LLM via Groq ao function calling, trata erros e contabiliza uso. |
+| `backend/rag.py` | Busca trechos locais e confere fontes, páginas e versão da base documental. |
+| `pipelines/preparar_rag.py` | Reproduz os trechos a partir dos PDFs oficiais com hashes fixados. |
+| `docs/base-documental.json` | Base pequena de conhecimento e catálogo das fontes que acompanham o código. |
 | `app.py` | Dashboard provisório em Streamlit, que consulta a API. |
 | `frontend/` | Pasta reservada para a futura interface React/Vite. |
 | `ml/preparar_dados.py` | Congela a fonte selecionada e cria lags, médias, sazonalidade e critérios de elegibilidade. |
@@ -451,6 +454,8 @@ Consulte `http://127.0.0.1:8000/docs` para testar as rotas:
   opcionais `data_inicio` (domingo do alvo) e `codigo_municipio`.
 - `GET /assistente/status`: configuração local do Groq, sem exibir a chave nem testar acesso ao provedor.
 - `POST /assistente`: pergunta em linguagem natural, fonte e histórico opcional; retorna explicação e consultas executadas.
+- `GET /documentos`: fontes e versão da base documental local.
+- `GET /documentos/busca?pergunta=...`: recupera até três trechos, sem chamar o Groq.
 
 Exemplo: `/vinculos-estacoes?ano=2025&codigo_municipio=320530` retorna o vínculo
 de Vitória à estação A612, a aproximadamente 1,248 km do centroide municipal.
@@ -678,7 +683,7 @@ leitura e devolve os resultados ao modelo para explicação. A chave fica no
 backend. A LLM não recebe conexão SQL nem executa comandos ou previsões próprias.
 
 As funções disponíveis resolvem municípios, consultam histórico, comparam cidades,
-identificam o modelo e consultam previsões. A comparação usa semanas observadas
+identificam o modelo, consultam previsões e buscam documentos oficiais. A comparação usa semanas observadas
 em comum e calcula totais/diferenças no backend, sem preencher lacunas com zero.
 As fontes permanecem separadas. O assistente usa SINAN por padrão; o campo
 `fonte` da solicitação permite selecionar SESA e cada consulta registra a fonte
@@ -729,7 +734,8 @@ Em `http://127.0.0.1:8000/docs`, teste `POST /assistente` com:
 }
 ```
 
-A resposta contém `resposta`, `provedor`, `modelo_llm` e `consultas`. Cada consulta
+A resposta contém `resposta`, `provedor`, `modelo_llm`, `consultas`, `uso` e
+`referencias` (vazio quando não há citação documental). Cada consulta
 registra nome da ferramenta, argumentos, sucesso e resultado agregado. Isso
 permite conferir o texto contra os dados efetivamente retornados. Não garante
 automaticamente que toda frase da LLM seja correta; os casos de avaliação estão
@@ -774,9 +780,73 @@ consultar funções e responder por esse protocolo de recusa.
 
 O cliente usa HTTPX, já presente nas dependências, conforme o [protocolo oficial
 de tool calling](https://console.groq.com/docs/tool-use/local-tool-calling).
-O RAG documental e a interface definitiva ainda não foram implementados.
+A recuperação documental está descrita abaixo. A interface definitiva ainda está pendente.
 Antes de publicar a rota, será necessário definir controle de acesso e limites
 de uso do provedor; nesta etapa o uso é local.
+
+## RAG com documentos oficiais
+
+O assistente usa `consultar_documentos` para perguntas conceituais e preventivas
+e devolve referências como `[R009]`. O backend fornece título, ano/edição, trecho,
+hash do documento e link para a página exata. Estatísticas e estimativas municipais
+continuam sendo consultadas pelas funções de dados e de ML.
+
+A base inicial tem **18 trechos de dois documentos do Ministério da Saúde**:
+
+- [Diretrizes de vigilância entomológica e controle vetorial, 2025](https://bvsms.saude.gov.br/bvs/publicacoes/diretrizes_nacionais_arboviroses_urbanas.pdf).
+- [Guia de Vigilância em Saúde, volume 2, 6ª edição revisada, 2024](https://bvsms.saude.gov.br/bvs/publicacoes/guia_vigilancia_saude_v2_6edrev.pdf).
+
+Foram selecionadas partes sobre controle mecânico, participação da população,
+vetores e conceitos de vigilância. A edição dos documentos permanece explícita;
+os trechos não constituem um boletim atual nem um serviço de diagnóstico,
+prescrição ou atualização de normas e calendários de vacinação.
+
+`docs/base-documental.json` tem aproximadamente 20 KB e é versionado: os integrantes
+recebem os textos necessários ao clonar o repositório. Os PDFs completos ficam
+em `data/raw/rag/`, ignorados pelo Git. O catálogo fixa URL, tamanho, SHA-256,
+páginas e marcadores de extração, permitindo reproduzir a base.
+
+Os trechos são disponibilizados sob **CC BY-NC-SA 4.0**, conforme as licenças das
+obras originais, com atribuição ao Ministério da Saúde. Essa indicação refere-se
+ao conteúdo documental; não altera a licença do código do projeto.
+
+Com a API em execução, abra `http://127.0.0.1:8000/docs` e teste primeiro
+`GET /documentos` e `GET /documentos/busca`. Essas rotas funcionam localmente,
+sem credencial Groq ou conexão ao banco. Depois, em `POST /assistente`, use:
+
+```json
+{
+  "pergunta": "O que é controle mecânico contra o Aedes? Cite os documentos oficiais.",
+  "fonte": "sinan"
+}
+```
+
+A busca usa TF-IDF de palavras/bigramas e de caracteres, com scikit-learn,
+cache em memória e limite de três trechos, priorizando páginas diferentes.
+A função da LLM tem limite padrão de dois trechos. A recuperação não consome
+tokens; somente as chamadas de geração ao Groq usam a cota da conta.
+Não há download de PDFs durante uma pergunta nem chamadas de embeddings externos.
+
+Citações ausentes, IDs não recuperados e links fora das fontes retornadas são
+bloqueados. Uma única correção de referências pode ser solicitada com os mesmos
+trechos, sem repetir a busca. Sem evidência suficiente, a resposta é uma mensagem
+fixa. Esses controles validam a origem das referências; a fidelidade de cada frase
+aos trechos ainda precisa ser avaliada. A busca é lexical e pode falhar com sinônimos
+ou formulações pouco próximas do texto, como registrado na avaliação.
+
+Para reproduzir ou conferir os trechos a partir dos PDFs:
+
+```powershell
+# Baixa apenas PDFs ausentes, verifica os hashes e recompõe a base pequena.
+.venv\Scripts\python.exe -B -m pipelines.preparar_rag --baixar
+
+# Com os PDFs já presentes, confere sem modificar a base versionada.
+.venv\Scripts\python.exe -B -m pipelines.preparar_rag --conferir
+```
+
+Essa preparação usa `pypdf`, incluído no requirements. Um arquivo remoto com hash
+diferente é recusado; atualizar a fonte exige revisar o catálogo e os recortes.
+Após alterar a base, reinicie a API para recarregar o cache.
 
 ## Testes e próximos passos
 
@@ -791,9 +861,9 @@ As bases SINAN e SESA estão integradas e conferidas no Supabase, com consultas
 próprias e sem mistura de contagens. A integração de 2026 e a avaliação própria
 SINAN foram concluídas, mantendo a avaliação SESA de 2020–2024 e o serviço
 anterior. As previsões têm modelo, versão, origem e limitações explícitos.
-O fluxo de function calling e a inferência GPT-OSS via Groq já funcionam,
-com respostas reais conferidas e limitações registradas. A avaliação continuará
-nas próximas integrações; depois segue RAG com documentos oficiais.
+O fluxo de function calling, a inferência GPT-OSS e o RAG inicial já funcionam,
+com respostas reais conferidas, referências verificáveis e limitações registradas.
+A avaliação continuará nas próximas integrações.
 A interface React/Vite, com ferramentas Node.js, fica para a etapa posterior.
 
 - [Planejamento e decisões do projeto](docs/contexto-projeto.md).

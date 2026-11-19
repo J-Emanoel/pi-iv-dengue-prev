@@ -309,12 +309,56 @@ class UsoAssistenteResponse(BaseModel):
     tokens_total: int | None = Field(default=None, ge=0)
 
 
+class ReferenciaDocumentoResponse(BaseModel):
+    id: str
+    titulo: str
+    orgao: str
+    ano: int
+    edicao: str
+    pagina_pdf: int
+    pagina_impressa: int
+    url: str
+    documento_sha256: str
+    licenca: str
+    tema: str
+    trecho: str
+    similaridade: float = Field(ge=0, le=1)
+
+
+class BuscaDocumentalResponse(BaseModel):
+    versao_base: str
+    metodo: Literal["tfidf_palavras_caracteres"]
+    encontrado: bool
+    trechos: list[ReferenciaDocumentoResponse]
+
+
+class FonteDocumentoResponse(BaseModel):
+    id: str
+    titulo: str
+    orgao: str
+    ano: int
+    edicao: str
+    url_pdf: str
+    sha256: str
+    total_paginas: int
+    consultado_em: date
+    licenca: str
+
+
+class CatalogoDocumentalResponse(BaseModel):
+    versao_base: str
+    licenca: str
+    fontes: list[FonteDocumentoResponse]
+    total_trechos: int
+
+
 class AssistenteResponse(BaseModel):
     resposta: str
     provedor: Literal["groq"] = "groq"
     modelo_llm: str
     consultas: list[ConsultaAssistenteResponse]
     uso: UsoAssistenteResponse | None = None
+    referencias: list[ReferenciaDocumentoResponse] = Field(default_factory=list)
 
 
 class ConfiguracaoAssistenteResponse(BaseModel):

@@ -4,7 +4,7 @@ Estado em 18/11/2026: infraestrutura e testes locais implementados. A chave
 foi aceita na consulta ao catálogo Groq (HTTP 200), que lista GPT-OSS 120B/20B.
 GPT-OSS 120B está configurado no `.env` local. A inferência real funciona;
 os sete cenários abaixo foram conferidos, após os ajustes descritos neste documento.
-O RAG documental não foi implementado.
+O RAG inicial foi implementado e sua avaliação específica está registrada ao final.
 
 ## O que os testes locais verificam
 
@@ -116,7 +116,7 @@ catálogo não é uma requisição de chat e não integra esses números.
 As chamadas externas foram encerradas após esses testes; os testes automatizados
 continuam usando provedor simulado. A suíte local final passou com 171 testes e
 58 subtestes. Há um aviso de depreciação do Starlette sobre seu cliente de testes;
-nenhuma dependência nova foi instalada nesta validação.
+nenhuma dependência nova foi instalada naquela validação inicial de function calling.
 
 Respostas completas e rastros ficam em `data/processed/avaliacao_assistente/`,
 ignorados pelo Git. O resumo de resultados fica neste documento. Tokens
@@ -124,11 +124,95 @@ referem-se somente ao `usage` informado nas respostas recebidas; falhas HTTP
 podem ter consumo adicional não informado. O painel Usage do Groq é a referência
 para o consumo total da conta.
 
+## RAG: base, recuperação e referências
+
+Atualização de 18/11/2026. A base documental `80c9e7af6483b52a` contém 18 trechos
+de duas publicações do Ministério da Saúde: Diretrizes de controle vetorial
+(2025) e Guia de Vigilância em Saúde, volume 2, 6ª edição revisada (2024).
+O conteúdo selecionado, com cerca de 20 KB, está em `docs/base-documental.json`;
+os PDFs completos ficam em `data/raw/rag/`, fora do Git.
+
+Os hashes e tamanhos dos dois PDFs foram conferidos, assim como as páginas
+físicas citadas e suas páginas impressas. As licenças CC BY-NC-SA 4.0 foram
+verificadas nas obras. A extração, com `pypdf 6.21.4`, conserva o texto dos
+recortes com normalização de espaços e divisão por frases/limites de tamanho.
+`pipelines.preparar_rag --conferir` reproduziu os mesmos 18 trechos e a mesma versão.
+
+A recuperação usa TF-IDF de palavras/bigramas e caracteres de três a cinco
+posições, com pesos 0,7/0,3. O limiar operacional é 0,10, com cobertura mínima
+de metade das famílias lexicais da consulta (prefixos de até cinco caracteres).
+Palavras comuns de pergunta são desconsideradas. Há limite de três trechos e
+no máximo um trecho por página de cada documento; a ferramenta solicita dois por padrão.
+Esses valores foram calibrados nas perguntas de desenvolvimento; similaridade
+não é confiança factual, epidemiológica ou probabilidade de acerto.
+
+Os testes locais cobrem seis perguntas de desenvolvimento com páginas esperadas
+e cinco sem evidência, incluindo vacinação não contemplada, medicamento,
+estatística municipal atual e assuntos alheios. Também verificam hashes,
+fontes/URLs permitidas, ausência de acesso ao banco/Groq nas rotas de documentos,
+recusas, citações agrupadas, IDs inventados, links externos e base indisponível.
+
+Em seis formulações adicionais, cinco tiveram o resultado de recuperação esperado:
+
+| Pergunta adicional | Resultado observado |
+| --- | --- |
+| Qual mosquito transmite a dengue? | Página PDF 274 do Guia, com a descrição do vetor. |
+| Casos prováveis incluem os descartados? | Páginas PDF 295 e 309 do Guia. |
+| Qual o papel da população no controle do Aedes? | Páginas PDF 52 e 46 das Diretrizes. |
+| Só é necessário eliminar criadouros no verão? | Recuperou eliminação de criadouros, mas não a página 49 sobre prevenção durante todo o ano. |
+| Qual dose pediátrica de ibuprofeno para dengue? | Nenhum trecho; sem evidência para esse assunto na base. |
+| Qual a previsão de notificações de Vitória para amanhã? | Nenhum trecho; essa consulta pertence ao serviço de dados/ML. |
+
+Esse é um conjunto pequeno e manual. O critério foi a presença da página esperada
+entre os resultados ou a abstenção, não a qualidade de uma resposta LLM. A pergunta
+sobre verão não foi enviada ao modelo: a falha registrada é de recuperação.
+Não houve ajuste posterior para fazê-la passar. A busca lexical pode perder
+sinônimos, relações temporais e paráfrases; expansão do corpus ou recuperação
+semântica devem ser avaliadas conforme as necessidades de uso.
+
+## RAG: avaliação real e consumo
+
+Pergunta testada: "O que é controle mecânico contra o Aedes? Cite os documentos oficiais."
+A primeira tentativa foi bloqueada pela falta de referências reconhecidas.
+O fluxo foi ajustado para reforçar os IDs disponíveis no contexto final, aceitar
+agrupamentos como `[R009, R010]` e admitir uma única correção de referências
+sem buscar documentos novamente. O reteste passou em duas chamadas, sem precisar
+dessa correção adicional.
+
+A resposta explicou remoção/vedação/destinação de criadouros e citou `[R009]`
+e `[R010]`. Os trechos, páginas e links retornados conferem com as Diretrizes
+de 2025: páginas PDF 52 e 133, correspondentes às impressas 51 e 132. O reteste
+teve a fábrica de sessões do banco desabilitada e registrou zero tentativas
+de acesso. Somente o cliente Groq e a base documental local foram utilizados.
+
+| Tentativa | Resultado da API | Chamadas Groq | Tokens de entrada | Tokens de saída | Total informado |
+| --- | --- | --- | --- | --- | --- |
+| Inicial | 502, resposta sem referências reconhecidas bloqueada | 2 | 4.055 | 239 | 4.294 |
+| Após ajuste | 200, referências verificadas | 2 | 4.119 | 221 | 4.340 |
+| Total desta etapa | Uma pergunta semântica, duas tentativas | 4 | 8.174 | 460 | 8.634 |
+
+As quatro respostas Groq informaram `usage`; o 502 inicial veio do validador local.
+Esse consumo é separado dos 38.544 tokens informados na etapa anterior.
+As chamadas externas foram encerradas após o reteste. Resultados completos
+e a verificação adicional ficam em `data/processed/avaliacao_rag/`, ignorados pelo Git.
+
+Os controles asseguram que as referências apontem para trechos recuperados;
+não provam que cada frase esteja semanticamente sustentada. A fidelidade foi
+conferida manualmente nessa pergunta, e a revisão automática de citações foi
+testada com provedor simulado. Ainda é necessário ampliar perguntas, recusas
+clínicas, resistência a instruções em documentos e avaliação com usuários.
+
+A suíte final desta etapa passou com **187 testes e 83 subtestes**. O `pip check`
+não encontrou dependências quebradas. A única dependência de aplicação adicionada
+foi `pypdf`; o renderizador usado na revisão visual ficou isolado e foi removido
+com as imagens temporárias após a conferência.
+
 ## Próximas verificações
 
 1. Ampliar a avaliação de fidelidade, recusas e terminologia conforme novas funcionalidades forem integradas.
 2. Manter modelo, data e consumo identificados ao avaliar novas perguntas.
-3. Acrescentar RAG com documentos oficiais e avaliar suas referências à parte.
+3. Ampliar os testes do RAG, especialmente paráfrases e cobertura documental.
+4. Integrar o assistente e suas referências à interface React/Vite e avaliar o fluxo completo.
 
 Comandos e exemplos de requisição ficam no README principal. Não registrar
 chaves nem textos pessoais sensíveis nos resultados versionados da avaliação.

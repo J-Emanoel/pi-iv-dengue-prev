@@ -127,7 +127,7 @@ class FerramentasAssistenteTests(unittest.TestCase):
         self.executar("consultar_modelo", {})
         self.assertEqual(self.snapshot(), antes)
         self.assertEqual({d["function"]["name"] for d in definicoes_ferramentas()},
-                         {"listar_municipios", "consultar_historico", "comparar_municipios", "consultar_modelo", "consultar_previsao"})
+                         {"listar_municipios", "consultar_historico", "comparar_municipios", "consultar_modelo", "consultar_previsao", "consultar_documentos"})
 
     def test_comparacao_usa_semanas_comuns_sem_preencher_lacunas(self):
         consulta = self.executar("comparar_municipios", dict(codigos_municipios=["320530", "320520"],

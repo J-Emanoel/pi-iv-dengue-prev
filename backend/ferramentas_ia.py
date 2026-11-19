@@ -14,6 +14,7 @@ from backend.analitica import BASE_ANALITICA, BASE_SESA
 from backend.database import DatabaseConfigurationError, SessionLocal
 from backend.models import Municipio
 from backend.previsoes import ConsultaPrevisaoError, PrevisaoIndisponivelError, get_servico_previsoes
+from backend.rag import BaseDocumentalIndisponivelError, get_base_documental
 from backend.schemas import ConsultaAssistenteResponse
 from pipelines.calendario import semanas_no_ano
 
@@ -49,12 +50,18 @@ class PrevisaoArgs(ModeloArgs):
     data_inicio: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="Domingo inicial do alvo em ISO. Omita para a semana seguinte ao snapshot, que pode estar defasada.")
 
 
+class DocumentosArgs(Argumentos):
+    pergunta: str = Field(min_length=3, max_length=500, description="Pergunta conceitual ou preventiva sobre dengue para buscar nos documentos oficiais cadastrados.")
+    limite: int = Field(default=2, ge=1, le=3, description="Dois trechos por padrão para limitar o contexto enviado ao Groq.")
+
+
 CATALOGO = {
     "listar_municipios": (MunicipiosArgs, "Resolve nomes e códigos oficiais dos municípios do Espírito Santo. Use antes de consultar por nome; peça esclarecimento se houver ambiguidade."),
     "consultar_historico": (HistoricoArgs, "Consulta registros, taxas e clima de um município por semana. Totais são calculados no backend, preservando ausências. Para comparar cidades, use comparar_municipios."),
     "comparar_municipios": (ComparacaoArgs, "Use esta função para comparar cidades após resolver seus códigos. Compara de dois a cinco municípios na mesma fonte e intervalo. O backend calcula totais e diferenças nas semanas observadas em comum, sem inventar zeros."),
     "consultar_modelo": (ModeloArgs, "Consulta estratégia efetiva, métricas, versão, datas e limitações do experimento. Use para explicar a persistência ou a defasagem da base."),
     "consultar_previsao": (PrevisaoArgs, "Consulta estimativa do modelo para uma semana disponível, com elegibilidade e motivo de indisponibilidade. Não calcula a previsão na LLM e não inventa semanas atuais."),
+    "consultar_documentos": (DocumentosArgs, "Busca até três trechos de documentos oficiais sobre prevenção, vetores e conceitos de vigilância. Use para perguntas conceituais/preventivas, citando os IDs retornados. Não fornece estatísticas atuais, diagnósticos ou receitas."),
 }
 
 
@@ -73,9 +80,10 @@ def serializar_semana(linha):
 
 
 class FerramentasIA:
-    def __init__(self, session_factory=None, carregar_previsoes=None):
+    def __init__(self, session_factory=None, carregar_previsoes=None, carregar_documentos=None):
         self.session_factory = session_factory or SessionLocal
         self.carregar_previsoes = carregar_previsoes or get_servico_previsoes
+        self.carregar_documentos = carregar_documentos or get_base_documental
 
     def executar(self, nome, argumentos_json, *, fonte_padrao="sinan"):
         """Nome não autorizado nunca vira SQL, expressão Python ou chamada arbitrária."""
@@ -100,6 +108,12 @@ class FerramentasIA:
                 resultado = self.comparar_municipios(**argumentos)
             elif nome == "consultar_modelo":
                 resultado = self.carregar_previsoes(fonte=argumentos["fonte"]).modelo.model_dump(mode="json")
+            elif nome == "consultar_documentos":
+                resultado = self.carregar_documentos().buscar(**argumentos)
+                if not resultado["encontrado"]:
+                    return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
+                        resultado={**resultado, "erro": "sem_base_documental",
+                            "mensagem": "Nenhum trecho suficiente foi encontrado. Não complete com conhecimento externo."})
             else:
                 dia = date.fromisoformat(argumentos["data_inicio"]) if argumentos["data_inicio"] else None
                 resultado = self.carregar_previsoes(fonte=argumentos["fonte"]).consultar(
@@ -109,6 +123,9 @@ class FerramentasIA:
         except (ConsultaPrevisaoError, ValueError) as exc:
             return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
                 resultado=dict(erro="consulta_invalida", mensagem=str(exc)))
+        except BaseDocumentalIndisponivelError:
+            return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
+                resultado=dict(erro="base_documental_indisponivel", mensagem="A base documental está indisponível. Não substitua os trechos por conhecimento externo."))
         except (DatabaseConfigurationError, SQLAlchemyError, PrevisaoIndisponivelError):
             return ConsultaAssistenteResponse(ferramenta=nome, argumentos=argumentos, sucesso=False,
                 resultado=dict(erro="dados_indisponiveis", mensagem="Não foi possível obter os dados. Confira conexão e artefatos locais; não estime valores ausentes."))

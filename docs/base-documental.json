@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "licenca": "CC-BY-NC-SA-4.0",
+  "versao": "80c9e7af6483b52a",
+  "extrator": "pypdf 6.21.4",
+  "fontes": [
+    {
+      "id": "MS-VETORES-2025",
+      "titulo": "Diretrizes Nacionais para Prevenção e Controle das Arboviroses Urbanas: Vigilância Entomológica e Controle Vetorial",
+      "orgao": "Ministério da Saúde",
+      "ano": 2025,
+      "edicao": "1ª edição, versão eletrônica",
+      "url_pdf": "https://bvsms.saude.gov.br/bvs/publicacoes/diretrizes_nacionais_arboviroses_urbanas.pdf",
+      "arquivo_local": "diretrizes_arboviroses_2025.pdf",
+      "sha256": "186538dda6132f64bc8dcc557d84cd0e319989f2280a3a58d0296cd35ba41be8",
+      "bytes": 8806646,
+      "total_paginas": 192,
+      "deslocamento_pagina_impressa": -1,
+      "consultado_em": "2026-11-18",
+      "licenca": "CC-BY-NC-SA-4.0",
+      "recortes": [
+        {
+          "pagina_pdf": 41,
+          "tema": "Vigilância entomológica: LIRAa e LIA",
+          "inicio": "5.2.2 Levantamento de índices larvários",
+          "fim": ""
+        },
+        {
+          "pagina_pdf": 46,
+          "tema": "Participação da população e do Estado",
+          "inicio": "A dinâmica biológica",
+          "fim": "Todavia"
+        },
+        {
+          "pagina_pdf": 47,
+          "tema": "Prevenção semanal e ciclo de vida do Aedes",
+          "inicio": "Ciclo de vida.",
+          "fim": "Tamanho."
+        },
+        {
+          "pagina_pdf": 47,
+          "tema": "Identificação e eliminação de criadouros",
+          "inicio": "Alvos.",
+          "fim": "A expressão"
+        },
+        {
+          "pagina_pdf": 48,
+          "tema": "Eliminar e vedar criadouros",
+          "inicio": "“eliminar, vedar, tratar”",
+          "fim": "c) Cidadania"
+        },
+        {
+          "pagina_pdf": 49,
+          "tema": "Prevenção ao longo de todo o ano",
+          "inicio": "Uma “conduta” oficial",
+          "fim": "Um ponto a explorar"
+        },
+        {
+          "pagina_pdf": 52,
+          "tema": "Controle mecânico e manejo ambiental",
+          "inicio": "7.1.1 Controle mecânico",
+          "fim": "7.1.2 Tratamento"
+        },
+        {
+          "pagina_pdf": 133,
+          "tema": "Proteção de depósitos de água, pneus e resíduos",
+          "inicio": "1.1 Controle mecânico",
+          "fim": ""
+        }
+      ]
+    },
+    {
+      "id": "MS-VIGILANCIA-2024",
+      "titulo": "Guia de Vigilância em Saúde: volume 2",
+      "orgao": "Ministério da Saúde",
+      "ano": 2024,
+      "edicao": "6ª edição revisada",
+      "url_pdf": "https://bvsms.saude.gov.br/bvs/publicacoes/guia_vigilancia_saude_v2_6edrev.pdf",
+      "arquivo_local": "guia_vigilancia_v2_2024.pdf",
+      "sha256": "93329dd1de090aaebfe0630a4077110b4dcf65b6107b074a41f606812cfed80c",
+      "bytes": 4171174,
+      "total_paginas": 560,
+      "deslocamento_pagina_impressa": 453,
+      "consultado_em": "2026-11-18",
+      "licenca": "CC-BY-NC-SA-4.0",
+      "recortes": [
+        {
+          "pagina_pdf": 274,
+          "tema": "Vírus da dengue e sorotipos",
+          "inicio": "AGENTES ETIOLÓGICOS",
+          "fim": "Assim como o DENV"
+        },
+        {
+          "pagina_pdf": 274,
+          "tema": "Mosquitos vetores e transmissão",
+          "inicio": "VETORES",
+          "fim": ""
+        },
+        {
+          "pagina_pdf": 295,
+          "tema": "Casos prováveis, notificados e descartados",
+          "inicio": "Casos prováveis:",
+          "fim": ""
+        },
+        {
+          "pagina_pdf": 309,
+          "tema": "Análise de dados, tendências e semanas epidemiológicas",
+          "inicio": "ANÁLISE DE DADOS/INDICADORES",
+          "fim": "A seguir"
+        },
+        {
+          "pagina_pdf": 309,
+          "tema": "Indicadores: casos prováveis e confirmados",
+          "inicio": "INDICADORES EPIDEMIOLÓGICOS, ASSISTENCIAIS E LABORATORIAIS",
+          "fim": ""
+        }
+      ]
+    }
+  ],
+  "trechos": [
+    {
+      "id": "R001",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 41,
+      "tema": "Vigilância entomológica: LIRAa e LIA",
+      "texto": "5.2.2 Levantamento de índices larvários: LIRAa e LIA Consistem, fundamentalmente, de um método de amostragem que tem como objetivo principal a obtenção de indicadores entomológicos (a partir de larvas), de maneira rápida. Os indicadores entomológicos estimados no LIRAa/LIA, realizados pelos programas de combate vetorial, são: ◼ IIP: percentual de edifícios positivos (com a presença de larvas de Ae. aegypti). ◼ Índice de Breteau (IB): a relação entre o número de recipientes positivos e o número de imóveis pesquisados. ◼ Índice de Tipo de Recipiente (ITR): É a relação em porcentagem entre o número do tipo de recipiente positivo e o número de recipientes positivos pesquisados (para larvas).",
+      "sha256": "8f9574e3bfebc67f5678cf7d685ca201f023ceb1760f108a864bc28ce14653b8"
+    },
+    {
+      "id": "R002",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 41,
+      "tema": "Vigilância entomológica: LIRAa e LIA",
+      "texto": "O levantamento de índices larvários deve ser realizado com a finalidade principal de identificar os criadouros predominantes e assim direcionar, de forma mais adequada à realidade local, as ações de mobilização social e controle vetorial. Além disso, fornece os índices de infestação predial e de Breteau, que juntos podem auxiliar na tomada de decisão do gestor no que tange ao planejamento das estratégias de prevenção e controle. Dessa forma, deve ser realizado em todo o município, com periodicidade mínima de uma vez ao ano, no período pré-epidêmico.",
+      "sha256": "f5040ed4dceb3ec3f52178be4f0a6954393e148e818452d123768766271fb8ba"
+    },
+    {
+      "id": "R003",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 46,
+      "tema": "Participação da população e do Estado",
+      "texto": "A dinâmica biológica e social dos mosquitos das espécies Ae. aegypti e Ae. albopictus exige que seu controle combine ações atribuídas ao Estado, nos ambientes públicos, e ações no ambiente doméstico, que dependem da participação direta da população. Neste aspecto, portanto, a comunicação envolve motivar ações individuais, no domínio privado, mas que tenham a capacidade de impactar seu entorno, ou seja, a coletividade. Em adição, a atuação efetiva do gestor na prevenção da infestação em ambientes públicos agrega credibilidade a esta comunicação (Valle et al., 2021).",
+      "sha256": "15ccfa66045c335d54dbba59273f675ebf456d91601ba77962d2a26815c39cdd"
+    },
+    {
+      "id": "R004",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 47,
+      "tema": "Prevenção semanal e ciclo de vida do Aedes",
+      "texto": "Ciclo de vida. Mosquitos das espécies Ae. aegypti e Ae. albopictus, de ovo a adulto, levam de sete a dez dias. As ações de comunicação, quando consideram esta periodi- cidade, colaboram para a redução da infestação de forma ajustada à biologia do vetor. O estímulo à atuação semanal na identificação e eliminação dos criadouros, aquáticos, do vetor, soa como plausível para o cidadão e, portanto, a adesão à conduta pode ser facilitada. O conceito “dez minutos contra o Aedes” (disponível no link: https:/ /www.ioc.fiocruz.br/dengue/folder.pdf), em circulação no país desde 2011, que estimula a busca e eliminação dos criadouros domésticos uma vez por semana, é uma iniciativa concreta de comunicação com a população, com resultados positivos. ◼",
+      "sha256": "d6af7fb3080a80630c36bf01f1a2508f92e706147b87bc6c1589e5435dfe6d99"
+    },
+    {
+      "id": "R005",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 47,
+      "tema": "Identificação e eliminação de criadouros",
+      "texto": "Alvos. Informação sobre os criadouros locais (cujo perfil varia de acordo com o território) ajuda a nortear as ações de identificação – e eliminação. Neste sentido, é importante articular com os agentes de saúde, que conhecem os principais tipos de criadouros de seus territórios. Da mesma forma, os dados advindos de cada um dos estratos do LIRAa devem ser repassados aos ACEs e ACSs, permitindo uma informação mais condizente com a realidade desses territórios. Além disso, informações técnicas sobre as principais características dos criadouros fornecem elementos que permitem a identificação de pontos menos evidentes, como calhas, lajes de superfície irregulares, mobiliário urbano sem manutenção etc. ◼ Ação. A comunicação ganha maior clareza quando aborda a ação necessária para a eli- minação do vetor de forma conectada com sua biologia.",
+      "sha256": "e1a9995d85743c7847d0484962e084f4b31f17e5fc6fa016e3cc72fff215a7bb"
+    },
+    {
+      "id": "R006",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 47,
+      "tema": "Identificação e eliminação de criadouros",
+      "texto": "É o caso, por exemplo, de indicar a eliminação das larvas sobre superfícies secas, para não se correr o risco de trocá-las de criadouro, simplesmente; ou a esfregação da superfície interna dos criadouros para destruição dos ovos, que, ao contrário das larvas, resistem à dessecação.",
+      "sha256": "7a6772decd4be9298f90380821bb962cd9c88f5f47b0b4981f9dd15bd72d5b9d"
+    },
+    {
+      "id": "R007",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 48,
+      "tema": "Eliminar e vedar criadouros",
+      "texto": "“eliminar, vedar, tratar” tem impacto positivo na comunicação: incorpora alternativas de ação sobre criadouros que não se podem eliminar; o termo “vedar” atenta para o cuidado de evitar frestas que podem ser usadas pela fêmea do mosquito em busca de locais de postura de seus ovos. Finalmente, deixa subentendido que o tratamento deve ser feito apenas nos criadouros que não é possível eliminar, nem vedar. ◼ A fêmea espalha seus ovos. É uma característica peculiar de Aedes. Esta informação sinaliza que a localização de um criadouro funciona como um alerta para intensificar a procura de outros, nas proximidades, no intradomicílio ou no peridomicílio.",
+      "sha256": "cd206c0133e1a5c943d450bc7f45d1b95af4e66cb788ec764a2a9b4a783ebe69"
+    },
+    {
+      "id": "R008",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 49,
+      "tema": "Prevenção ao longo de todo o ano",
+      "texto": "Uma “conduta” oficial a superar é a sazonalidade das ações de comunicação, em consonância com a sazonalidade do vetor. Os mosquitos Ae. aegypti e Ae. albopictus se perpetuam ao longo de todo o ano, principalmente em função da grande resistência de seus ovos à dessecação. A busca de estratégias para manter o tema em pauta nas diferentes estações do ano exige criatividade e pode se beneficiar da atuação de grupos multidisciplinares.",
+      "sha256": "bc1925eb98924565b46b9bd56ee941cd7c4ffb873a3cf70f4dc50fadeef8a76c"
+    },
+    {
+      "id": "R009",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 52,
+      "tema": "Controle mecânico e manejo ambiental",
+      "texto": "7.1.1 Controle mecânico O controle mecânico consiste na adoção de ações de remoção, destruição, vedação ou desti nação adequada de depósitos que ofereçam condições favoráveis à proliferação do mosquito Aedes. Também chamado de “manejo ambiental”, o controle mecânico é considerado o método preventivo mais eficaz e seguro: uma vez que é executado, eliminam-se os focos de proliferação de forma imediata, sem a exposição a inseticidas. Trata-se de uma medida de controle a ser executada por todos cidadãos, tendo cada morador a responsabilidade sobre seus imóveis. Os agentes de saúde participam na orientação e supervisão das ações e auxiliam nas realizações dos mutirões, com apoio dos setores responsáveis e da população. Para mais informações, consultar o Apêndice G – Estratégias fundamentais de controle vetorial destas Diretrizes.",
+      "sha256": "f769398666e585458b78900853d672ee40aee626d5efc5ffac9dd14952b7a6ab"
+    },
+    {
+      "id": "R010",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 133,
+      "tema": "Proteção de depósitos de água, pneus e resíduos",
+      "texto": "1.1 Controle mecânico O controle mecânico consiste na adoção de práticas capazes de impedir a procriação do Aedes, tendo como principais atividades a proteção, a destruição ou a destinação adequada de criadouros, que devem ser executadas prioritariamente pelo próprio morador/ proprietário, sob a supervisão dos ACEs e ACS. Diversas iniciativas de controle mecânico em larga escala podem ser incorporadas pelo gestor municipal, entre as quais podem ser enfatizadas: ◼ Intensificação na coleta de resíduos sólidos e/ou mutirões de limpeza com destinação final adequada, direcionados a partir de dados entomológicos, por exemplo aqueles advindos do monitoramento das ovitrampas, tipos de recipientes predominantes – D2 ou de dados de notificação de casos prováveis de arboviroses.",
+      "sha256": "f21a136a6441b628121566291079ad59e1aff58deee73a875ed6ed0bb345b444"
+    },
+    {
+      "id": "R011",
+      "fonte_id": "MS-VETORES-2025",
+      "pagina_pdf": 133,
+      "tema": "Proteção de depósitos de água, pneus e resíduos",
+      "texto": "◼ Coleta, armazenamento e destinação adequada de pneumáticos, por meio de parcerias com empresas privadas e com as prefeituras. Os trabalhos de logística reversa implantados no país têm amparo legal na Resolução Conama 416/2009 e na Política Nacional de Resíduos Sólidos – PNRS (Lei n.º 12.305, de 2 de agosto de 2010), que regulamenta a coleta e destinação dos pneus inservíveis (mais informações podem ser obtidas no endereço eletrônico www.reciclanip.org.br); ◼ Vedação de depósitos de armazenamento de água, com a utilização de capas e tampas.",
+      "sha256": "3b5749f916948c1266bf4c026ea810fc659358f950ceaf2de093ed42b519ab1d"
+    },
+    {
+      "id": "R012",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 274,
+      "tema": "Vírus da dengue e sorotipos",
+      "texto": "AGENTES ETIOLÓGICOS O DENV é um vírus de RNA pertencente ao gênero Flavivirus e família Flaviviridae. São conhecidos quatro sorotipos virais (DENV-1, DENV-2, DENV-3 e DENV-4), cada qual apresentando distintos genótipos e linhagens. Com base nessa classificação, há de três a cinco grupos geneticamente diferentes dentro de cada sorotipo. Sabe-se que o vírus evoluiu com o passar do tempo e essa evolução contribuiu para o aumento da virulência nos seres humanos e sua distribuição no mundo (Pinho, 2013).",
+      "sha256": "183a1f5d2f087b8b93f0b5e0ff2ef2993e781226e6f2e0411c39569ef066ef5e"
+    },
+    {
+      "id": "R013",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 274,
+      "tema": "Mosquitos vetores e transmissão",
+      "texto": "VETORES Os mosquitos do gênero Aedes, pertencentes ao subgênero Stegomyia, estão envolvidos na transmissão de dengue, chikungunya e Zika, sendo que o Ae.aegypti é a principal espécie envolvida. Por ser uma espécie cosmopolita, está amplamente distribuída e disseminada em território nacional, principalmente, em ambientes urbanos (Consoli; Oliveira, 1994; Marcondes; Ximenes, 2016).",
+      "sha256": "f2ec9476732411282f763e3c8f91cea5ec6e53ce87ad3b487ea5090d271bc955"
+    },
+    {
+      "id": "R014",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 295,
+      "tema": "Casos prováveis, notificados e descartados",
+      "texto": "Casos prováveis: para fins de ações de vigilância, consideram-se casos prováveis, todos os casos notificados, exceto os casos descartados.",
+      "sha256": "8c613f2322cfebb8f71691544cdd9fa42ba2188ea25ad1f6a26c65186d0d3b00"
+    },
+    {
+      "id": "R015",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 309,
+      "tema": "Análise de dados, tendências e semanas epidemiológicas",
+      "texto": "ANÁLISE DE DADOS/INDICADORES A análise dos dados permite a avaliação da magnitude do problema, orienta e avalia as medidas que vêm sendo adotadas. Por isso, deve ser feita sistematicamente em todos os níveis de gestão (federal, estadual e municipal), considerando as diversas fontes de dados, como: GAL, Sinan, Sistema de Informações Hospitalares do SUS (SIH/SUS), Sistema de Informações sobre Mortalidade (SIM) para a Vigilância Epidemiológica; e o Levantamento Rápido de Índices para Ae.aegypti (LIRAa/LIA) para Vigilância Entomológica (Brasil, 2013b). A periodicidade das análises dependerá da situação epidemiológica/entomológica e, também, da organização do fluxo de informações. Contudo, as análises realizadas no período interepidêmico são fundamentais para detecção precoce nas mudanças do padrão de ocorrência das arboviroses no respectivo território.",
+      "sha256": "37e2a2e931abdc2f868f97f2f84f5dce61032c3b262758b1b194de0c11e89e41"
+    },
+    {
+      "id": "R016",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 309,
+      "tema": "Análise de dados, tendências e semanas epidemiológicas",
+      "texto": "É preciso considerar os dados referentes à distribuição e densidade vetorial, à ocorrência de casos e à proporção de confirmação laboratorial para que essas informações possam subsidiar a análise da situação epidemiológica e orientar o uso dos métodos de controle disponíveis. Os dados referentes aos casos devem ser consolidados, agrupados e ordenados de forma descritiva, segundo características de pessoa, tempo e lugar, para possibilitar avaliação de tendência dessas arboviroses e comparação com as semanas epidemiológicas e/ou períodos de anos anteriores. A atualização dos dados deve ser realizada periodicamente, bem como a elaboração das curvas endêmica e epidêmica, para que forneçam uma visão global do evento e permitam o acompanhamento sistemático de sua evolução. Em situação de epidemia, as análises devem ser preferencialmente diárias.",
+      "sha256": "c3879474f61972f5bc28f32e3124d1e9357691c23ea82aa68137247615b0b291"
+    },
+    {
+      "id": "R017",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 309,
+      "tema": "Análise de dados, tendências e semanas epidemiológicas",
+      "texto": "Nos boletins epidemiológicos, sugere-se empregar linguagem clara e acessível, visando à sua divulgação para a população, imprensa e dirigentes dos órgãos de saúde, assim como para aqueles engajados em ações intersetoriais. Os municípios podem utilizar diagramas de controle, que possibilitam analisar os níveis endêmicos das doenças e, assim, identificar precocemente a ocorrência de epidemias.",
+      "sha256": "15465dff1c66784864f70fdec6d79b34011d2f5cb11564ec03cd81bba551db73"
+    },
+    {
+      "id": "R018",
+      "fonte_id": "MS-VIGILANCIA-2024",
+      "pagina_pdf": 309,
+      "tema": "Indicadores: casos prováveis e confirmados",
+      "texto": "INDICADORES EPIDEMIOLÓGICOS, ASSISTENCIAIS E LABORATORIAIS • Número e taxa de incidência de casos prováveis (casos notificados, excluídos os casos descartados). • Número de casos confirmados (critério laboratorial e critério clínico-epidemiológico). • Número de casos confirmados de dengue com sinais de alarme e dengue grave. • Proporção de casos prováveis de dengue, chikungunya e Zika distribuídos por sexo. • Proporção de casos com confirmação laboratorial. • Proporção e incidência de casos prováveis de dengue, chikungunya e Zika por faixa etária. • Proporção de casos prováveis de dengue, chikungunya e Zika por faixa etária. • Número e taxa de incidência de internações por faixa etária. • Número absoluto de óbitos confirmados e taxa de letalidade.",
+      "sha256": "db2062742f6c2252ef0bc284bd249a234700790a210d9d8a760a9bd0ee44001b"
+    }
+  ]
+}

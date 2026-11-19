@@ -17,14 +17,21 @@ from backend.previsoes import (
     ConsultaPrevisaoError, PrevisaoIndisponivelError, ServicoPrevisoes, get_servico_previsoes,
 )
 from backend.ferramentas_ia import get_ferramentas_ia
+from backend.rag import BaseDocumental, BaseDocumentalIndisponivelError, get_base_documental
 from backend.schemas import (
     BaseAnaliticaResponse, BaseSesaResponse, CasoResponse, ClimaResponse, CoberturaResponse, CoberturaSesaResponse,
     EstacaoResponse, ModeloPrevisaoResponse, MunicipioResponse, PopulacaoResponse,
     PrevisoesResponse, VinculoEstacaoResponse,
     AssistenteRequest, AssistenteResponse, ConfiguracaoAssistenteResponse,
+    BuscaDocumentalResponse, CatalogoDocumentalResponse,
 )
 
-app = FastAPI(title="API DenguePrev - ES", version="0.10.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.11.0")
+
+
+@app.exception_handler(BaseDocumentalIndisponivelError)
+def document_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Base documental indisponível."})
 
 
 @app.exception_handler(DatabaseConfigurationError)
@@ -253,5 +260,24 @@ def perguntar_assistente(
     cliente=Depends(get_cliente_groq),
     ferramentas=Depends(get_ferramentas_ia),
 ):
-    """Llama via Groq consulta funções de leitura e explica seus resultados agregados."""
+    """LLM via Groq consulta agregados e documentos oficiais pelas funções permitidas."""
     return conversar(pedido, cliente, ferramentas)
+
+
+@app.get("/documentos", response_model=CatalogoDocumentalResponse, tags=["Documentos"])
+def listar_documentos(base: BaseDocumental = Depends(get_base_documental)):
+    """Fontes, edições e versão da base local; não chama a LLM."""
+    return base.listar_fontes()
+
+
+@app.get("/documentos/busca", response_model=BuscaDocumentalResponse, tags=["Documentos"])
+def buscar_documentos(
+    pergunta: str = Query(min_length=3, max_length=500),
+    limite: int = Query(default=3, ge=1, le=3),
+    base: BaseDocumental = Depends(get_base_documental),
+):
+    """Trechos com página e link oficial; busca local sem consumir tokens do Groq."""
+    try:
+        return base.buscar(pergunta, limite)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Confira a pergunta e o limite de trechos.") from None
