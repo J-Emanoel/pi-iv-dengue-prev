@@ -103,6 +103,46 @@ class BaseSesaResponse(AgregadoSemanalResponse):
     fonte_registros_csv_sha256: str | None
 
 
+class SemanaComparacaoResponse(BaseModel):
+    semana_epidemiologica: int
+    data_inicio: date
+    data_fim: date
+    registros_notificados: int | None
+    registros_por_100_mil: float | None
+
+
+class ResumoComparacaoResponse(BaseModel):
+    total_registros_observados: int | None
+    semanas_consultadas: int
+    semanas_com_registro: int
+    semanas_sem_registro: int
+
+
+class MunicipioComparacaoResponse(BaseModel):
+    codigo_ibge: str
+    nome_municipio: str
+    resumo_intervalo: ResumoComparacaoResponse
+    registros_nas_semanas_comuns: int | None
+    diferenca_para_primeiro_municipio: int | None
+    semanas: list[SemanaComparacaoResponse]
+
+
+class PeriodoComparacaoResponse(BaseModel):
+    inicio: date
+    fim: date
+
+
+class ComparacaoResponse(BaseModel):
+    fonte: Literal["sinan", "sesa"]
+    referencia: str
+    ano: int
+    data_fim_ultima_semana_com_registros_na_fonte: date | None
+    periodo: PeriodoComparacaoResponse
+    semanas_observadas_em_comum: list[int]
+    municipios: list[MunicipioComparacaoResponse]
+    limitacoes: list[str]
+
+
 class DiagnosticoCoberturaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -386,6 +386,17 @@ Abra `http://127.0.0.1:5173`. As páginas são:
   tabela se atualizam automaticamente. “Experimentar com Vitória” seleciona
   essa cidade nos dados reais. “Ver todos os municípios” retorna à consulta
   estadual e ao ranking. “Baixar dados (CSV)” exporta a seleção atual.
+- **Mapa municipal**, dentro do Histórico: selecione uma cidade pelo desenho
+  ou pelo teclado. Alterne entre registros e registros por 100 mil habitantes.
+  Os totais do mapa são do intervalo escolhido; o hachurado indica valor ausente.
+- **População e clima**, dentro do Histórico: consulte o denominador anual e
+  a taxa descritiva. Com uma cidade selecionada, alterne chuva, temperatura e
+  umidade e ajuste a cobertura mínima por sensor. A média é das médias semanais
+  aceitas; a chuva soma somente as semanas aceitas. O critério é exploratório.
+- **Comparar** (`/comparacao`): selecione duas cidades, fonte, ano e intervalo
+  de semanas. A API soma somente as semanas observadas em comum. A tela mostra
+  totais, diferença em relação à primeira cidade, gráfico, tabela e exportação
+  CSV. “Inverter cidades” altera a referência da diferença.
 - **Previsões** (`/estimativas`): selecione um município para destacar seu
   resultado, período, última contagem e motivo quando faltarem dados. O ano
   epidemiológico vem da API. A explicação do método e da avaliação fica abaixo.
@@ -399,6 +410,28 @@ conteúdo. O acesso “Como usar” no topo abre essa seção e leva até ela. A
 consultada está identificada nos filtros; abra “Alterar base” para escolher
 SINAN ou SESA/e-SUS VS. O assistente não exige selecionar um ano: perguntas
 sobre um período específico devem incluí-lo no texto.
+
+Os filtros de fonte, ano, município e semanas ficam no endereço; na comparação,
+o segundo município também fica no link. “Copiar consulta” permite compartilhar
+essa seleção. Voltar/avançar no navegador restaura os filtros. O atalho
+“8 semanas até o último registro” seleciona um intervalo contínuo que termina
+na última observação da cidade (ou da fonte na consulta estadual); não oculta
+lacunas internas. “Ano inteiro” restaura todas as semanas do calendário.
+
+O histórico lê uma grade anual por fonte e ano; as trocas de município e de
+semanas usam essa grade localmente. `GET /comparacao` reutiliza a operação do
+assistente, retorna as séries e os totais nas semanas comuns e não chama o Groq.
+Exemplo na documentação `/docs`: fonte `sinan`, ano `2026`, semanas `40` a `43`,
+códigos `320530` e `320520`. Não é necessário fornecer uma chave Groq para essa rota.
+
+O mapa utiliza `frontend/src/features/panorama/municipios-es.json`, recurso
+pequeno versionado, obtido da API pública de malhas do IBGE em 22/11/2026.
+O próprio arquivo contém URL, data e SHA-256 dos bytes originais, anteriores à
+formatação e à inclusão desses metadados. O original fica em
+`data/raw/geografia/malha_municipios_es.geojson`, ignorado pelo Git. O frontend
+desenha a malha localmente e não depende de mapas externos durante o uso.
+É uma malha simplificada fixa para visualização, sem uso cadastral ou garantia
+de reconstrução dos limites territoriais de cada ano histórico.
 
 Os dados são lidos da API; não há modo demonstrativo nem preenchimento de
 ausências com zero. Mudar a fonte seleciona seu último ano configurado.

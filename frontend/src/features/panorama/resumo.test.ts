@@ -108,4 +108,10 @@ describe('interpretação dos agregados no panorama', () => {
     expect(urlExternaSegura('javascript:alert(1)')).toBeUndefined();
     expect(urlExternaSegura('data:text/html,<script>')).toBeUndefined();
   });
+
+  it('preserva temperaturas negativas como números no CSV, mantendo a proteção de campos textuais', () => {
+    const csv = gerarCsvHistorico([registro({ temperatura_media_c: -2 })], 'sinan');
+    expect(csv).toContain(';"-2";');
+    expect(csv).not.toContain("'-2");
+  });
 });

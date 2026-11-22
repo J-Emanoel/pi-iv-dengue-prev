@@ -1,11 +1,13 @@
 """Rotas HTTP: recebem filtros e devolvem os agregados consultados no banco."""
 
 from datetime import date
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 from backend.analitica import BASE_ANALITICA, BASE_SESA, consulta_cobertura
 from backend.assistente import ErroAssistente, conversar, get_cliente_groq, status_configuracao
@@ -16,17 +18,17 @@ from backend.models import (
 from backend.previsoes import (
     ConsultaPrevisaoError, PrevisaoIndisponivelError, ServicoPrevisoes, get_servico_previsoes,
 )
-from backend.ferramentas_ia import get_ferramentas_ia
+from backend.ferramentas_ia import ComparacaoArgs, get_ferramentas_ia
 from backend.rag import BaseDocumental, BaseDocumentalIndisponivelError, get_base_documental
 from backend.schemas import (
     BaseAnaliticaResponse, BaseSesaResponse, CasoResponse, ClimaResponse, CoberturaResponse, CoberturaSesaResponse,
     EstacaoResponse, ModeloPrevisaoResponse, MunicipioResponse, PopulacaoResponse,
     PrevisoesResponse, VinculoEstacaoResponse,
     AssistenteRequest, AssistenteResponse, ConfiguracaoAssistenteResponse,
-    BuscaDocumentalResponse, CatalogoDocumentalResponse,
+    BuscaDocumentalResponse, CatalogoDocumentalResponse, ComparacaoResponse,
 )
 
-app = FastAPI(title="API DenguePrev - ES", version="0.11.0")
+app = FastAPI(title="API DenguePrev - ES", version="0.12.0")
 
 
 @app.exception_handler(BaseDocumentalIndisponivelError)
@@ -246,6 +248,26 @@ def listar_previsoes(
         return servico.consultar(data_inicio=data_inicio, codigo_municipio=codigo_municipio)
     except ConsultaPrevisaoError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/comparacao", response_model=ComparacaoResponse)
+def comparar_municipios(
+    codigos_municipios: list[str] = Query(min_length=2, max_length=5),
+    ano: int = Query(ge=2020, le=2026),
+    fonte: Literal["sinan", "sesa"] = "sinan",
+    semana_inicial: int = Query(default=1, ge=1, le=53),
+    semana_final: int | None = Query(default=None, ge=1, le=53),
+    ferramentas=Depends(get_ferramentas_ia),
+):
+    """Mesma comparação do assistente, sem chamar a LLM nem consumir tokens."""
+    try:
+        argumentos = ComparacaoArgs.model_validate(dict(codigos_municipios=codigos_municipios,
+            ano=ano, fonte=fonte, semana_inicial=semana_inicial, semana_final=semana_final))
+        return ferramentas.comparar_municipios(**argumentos.model_dump(), incluir_semanas=True)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Informe de dois a cinco códigos municipais válidos do ES.") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 @app.get("/assistente/status", response_model=ConfiguracaoAssistenteResponse, tags=["Assistente"])

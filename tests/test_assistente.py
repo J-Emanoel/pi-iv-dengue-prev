@@ -138,6 +138,51 @@ class FerramentasAssistenteTests(unittest.TestCase):
         self.assertEqual([m["diferenca_para_primeiro_municipio"] for m in consulta.resultado["municipios"]], [0, -5])
         self.assertFalse(self.executar("comparar_municipios", dict(codigos_municipios=["320530", "320530"], ano=2025)).sucesso)
 
+    def test_comparacao_http_usa_mesma_regra_sem_groq_e_sem_escrita(self):
+        antes = self.snapshot()
+        app.dependency_overrides[get_ferramentas_ia] = lambda: self.ferramentas
+        try:
+            with TestClient(app) as http, patch.object(self.ferramentas, "carregar_previsoes") as modelo:
+                response = http.get("/comparacao", params=[("codigos_municipios", "320530"),
+                    ("codigos_municipios", "320520"), ("ano", "2025"), ("semana_final", "3")])
+                self.assertEqual(response.status_code, 200)
+                dados = response.json()
+                self.assertEqual(dados["semanas_observadas_em_comum"], [1])
+                self.assertEqual([m["registros_nas_semanas_comuns"] for m in dados["municipios"]], [10, 5])
+                self.assertEqual([s["registros_notificados"] for s in dados["municipios"][0]["semanas"]], [10, 0, None])
+                self.assertEqual(dados["periodo"]["inicio"], "2024-12-29")
+                self.assertEqual(dados["ano"], 2025)
+                modelo.assert_not_called()
+        finally:
+            app.dependency_overrides.clear()
+        self.assertEqual(self.snapshot(), antes)
+
+    def test_comparacao_http_sem_observacoes_comuns_nao_inventa_zero(self):
+        app.dependency_overrides[get_ferramentas_ia] = lambda: self.ferramentas
+        try:
+            with TestClient(app) as http:
+                response = http.get("/comparacao", params=[("codigos_municipios", "320530"),
+                    ("codigos_municipios", "320520"), ("ano", "2025"), ("semana_inicial", "3"), ("semana_final", "3")])
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["semanas_observadas_em_comum"], [])
+                self.assertTrue(all(m["registros_nas_semanas_comuns"] is None for m in response.json()["municipios"]))
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_comparacao_http_rejeita_fontes_periodos_e_codigos_invalidos(self):
+        app.dependency_overrides[get_ferramentas_ia] = lambda: self.ferramentas
+        base = dict(codigos_municipios=["320530", "320520"], ano=2025)
+        try:
+            with TestClient(app) as http:
+                for mudanca in (dict(codigos_municipios=["320530", "320530"]),
+                    dict(codigos_municipios=["355030", "320530"]), dict(fonte="outra"),
+                    dict(semana_inicial=5, semana_final=3), dict(ano=2026, semana_final=53),
+                    dict(fonte="sesa", ano=2026), dict(codigos_municipios=["320530"])):
+                    with self.subTest(mudanca=mudanca):
+                        self.assertEqual(http.get("/comparacao", params={**base, **mudanca}).status_code, 422)
+        finally:
+            app.dependency_overrides.clear()
+
     def test_ciclo_envia_resultado_real_da_ferramenta_para_segunda_chamada(self):
         cliente = ProvedorSimulado([
             chamada("consultar_historico", dict(codigo_municipio="320530", ano=2025, semana_final=1)),

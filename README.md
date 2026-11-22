@@ -12,6 +12,8 @@ de interpretação.
 ## O que a aplicação oferece
 
 - **Histórico municipal:** consulta por município, ano e semana epidemiológica.
+- **Exploração territorial:** mapa dos 78 municípios e comparação entre duas
+  cidades nas semanas com observações em comum.
 - **Indicadores e contexto:** registros por 100 mil habitantes, população,
   clima e disponibilidade das observações.
 - **Estimativas de curto prazo:** resultados de experimentos temporais, com
@@ -22,8 +24,9 @@ de interpretação.
   referências com origem e página.
 
 Esses recursos são disponibilizados pela API e pela interface React/Vite em
-`frontend/`, com Histórico, Previsões e Assistente. Os filtros atualizam as
-consultas automaticamente, e cada página oferece instruções de uso. O dashboard Streamlit
+`frontend/`, com Histórico, Comparar, Previsões e Assistente. O histórico reúne
+gráfico, mapa, população e clima; os filtros podem ser compartilhados pelo link
+da consulta. Cada página oferece instruções de uso. O dashboard Streamlit
 permanece disponível como visualização provisória do histórico SINAN.
 
 ## Arquitetura

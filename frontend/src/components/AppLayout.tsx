@@ -3,6 +3,7 @@ import {
   ChartNoAxesCombined,
   CircleHelp,
   History,
+  GitCompareArrows,
   MapPin,
   MessagesSquare,
 } from 'lucide-react';
@@ -16,6 +17,12 @@ const navegacao = [
     descricao: 'Consulte os registros por período',
     icone: History,
     fim: true,
+  },
+  {
+    destino: '/comparacao',
+    nome: 'Comparar',
+    descricao: 'Compare duas cidades no mesmo período',
+    icone: GitCompareArrows,
   },
   {
     destino: '/estimativas',
@@ -32,7 +39,7 @@ const navegacao = [
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const pagina = navegacao.find(({ destino }) => destino === pathname);
 
   function abrirAjuda() {
@@ -60,7 +67,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           {navegacao.map(({ destino, nome, descricao, icone: Icone, fim }) => (
             <NavLink
               key={destino}
-              to={destino}
+              to={{ pathname: destino, search }}
               end={fim}
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >

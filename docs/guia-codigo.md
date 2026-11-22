@@ -90,20 +90,27 @@ incompatibilidades antes da execução.
 | Arquivo ou grupo em `frontend/` | Responsabilidade |
 | --- | --- |
 | `index.html` e `src/main.tsx` | Documento inicial e montagem do React com o roteador. |
-| `src/App.tsx` | Rotas, filtros compartilhados e carregamento do cadastro municipal. As páginas são importadas sob demanda. |
+| `src/App.tsx` | Rotas, filtros compartilhados no endereço e carregamento do cadastro municipal. As páginas são importadas sob demanda. |
 | `src/components/AppLayout.tsx` | Marca, navegação, localização da página e rodapé comuns. O acesso “Como usar” abre as instruções da página. |
-| `src/components/Filtros.tsx` | Seletores de município e ano, escolha expansível da base e retorno à consulta estadual. Explica a atualização automática e adapta os controles a cada página. |
-| `src/components/AjudaPagina.tsx` | Instruções expansíveis de uso, reutilizadas nas três páginas. |
+| `src/components/Filtros.tsx` | Seletores de município, ano e intervalo de semanas, escolha expansível da base e retorno à consulta estadual. Adapta os controles a cada página. |
+| `src/components/AjudaPagina.tsx` | Instruções expansíveis de uso, reutilizadas nas páginas. |
+| `src/components/CopiarConsulta.tsx` | Copia o endereço com filtros, informa sucesso e orienta a cópia manual quando o navegador não permite acesso à área de transferência. |
 | `src/components/Painel.tsx` | Cabeçalhos, cartões de indicadores e painéis reutilizáveis. |
 | `src/components/EstadoConsulta.tsx` | Estados de carregamento, erro, tentativa manual e ausência de dados. |
 | `src/hooks/useApi.ts` | Ciclo das leituras HTTP; cancela consultas antigas e evita mostrar dados de outro filtro. |
 | `src/services/api.ts` | Prefixo da API, requisições, erros, timeouts, caminhos das fontes e envio explícito de perguntas. |
 | `src/types/api.ts` | Contratos TypeScript consumidos da API, incluindo valores opcionais e ausência. A referência completa continua em `backend/schemas.py`. |
-| `src/features/panorama/` | Página do histórico, gráfico, ranking e funções puras que resumem observações sem substituir ausência por zero. |
+| `src/features/panorama/PanoramaPage.tsx` | Consulta uma grade anual estadual e deriva as seleções locais de município/semana. Organiza Histórico, Mapa municipal e População e clima, exportação e atalhos. |
+| `src/features/panorama/resumo.ts` e `analise.ts` | Resumos de registros e cobertura; população anual contada uma vez por município; taxas descritivas e filtragem de sensores por cobertura. Preservam ausência e zero. |
+| `src/features/panorama/MapaMunicipios.tsx`, `geografia.ts` e `municipios-es.json` | Mapa selecionável por mouse/teclado, projeção local e malha simplificada do IBGE. O JSON é um recurso necessário da interface, com origem, data de obtenção e hash do arquivo original. |
+| `src/features/panorama/IndicadoresContexto.tsx` | População e taxa no intervalo; clima de uma cidade com seleção de sensor, cobertura, gráfico e tabela. Evita somar estações repetidas num total estadual. |
+| `src/features/panorama/GraficoSemanal.tsx` e `RankingMunicipios.tsx` | Gráfico semanal com lacunas e ranking com busca por nome e seleção de cidade. |
+| `src/features/comparacao/ComparacaoPage.tsx` | Duas cidades, período comum, totais/diferenças calculados pelo backend, gráfico de contagens ou taxas, tabela, inversão da referência e CSV. |
 | `src/features/estimativas/EstimativasPage.tsx` | Datas do snapshot e do alvo, avaliação do modelo, estimativas e motivos por município. Usa o ano epidemiológico retornado pela API. |
 | `src/features/assistente/AssistentePage.tsx` e `MensagemResposta.tsx` | Formulário com envio explícito, sugestões, biblioteca e apresentação das respostas e referências. |
 | `src/features/assistente/useConversa.ts` | Histórico em memória, município enviado como contexto, limite de texto, cancelamento e bloqueio de envios duplicados. Reinicia a conversa ao trocar fonte ou cidade. |
 | `src/lib/formatacao.ts` e `csv.ts` | Formatação de números/datas, configuração das fontes, URLs permitidas e exportação de dados. |
+| `src/lib/filtros.ts` | Valida e restaura os filtros do endereço; serializa as consultas e aplica o calendário epidemiológico de 52 ou 53 semanas. |
 | `src/styles.css` | Paleta em variáveis CSS, tipografia, layouts, estados de foco e regras responsivas. Azul identifica navegação e consultas; violeta acompanha previsões e assistente. |
 | Arquivos `*.test.ts` e `*.test.tsx` em `src/` | Ausência/zero, somas parciais, cobertura, CSV e requisições. Os testes de interação verificam filtros e conversa com respostas simuladas: sugestão sem envio, contexto municipal, envio único e recuperação de falhas. Não chamam o Groq. |
 | `vite.config.ts` | Plugin React e proxy local `/api` para o backend; lê a configuração do próprio frontend. |
@@ -545,8 +552,9 @@ reproduzir a preparação/treinamento ou receber um pacote compatível. Essa
 distribuição deve fazer parte da preparação do ambiente da demonstração final.
 
 A organização dos arquivos não conclui as etapas funcionais restantes.
-A interface React/Vite tem sua primeira integração implementada; mapa,
-comparação municipal e validação completa de uso continuam pendentes.
+A interface React/Vite inclui mapa, comparação municipal, população, clima e
+filtros compartilháveis. A validação visual e dos fluxos completos no navegador,
+a ampliação da avaliação da IA e a publicação continuam pendentes.
 A avaliação do assistente/RAG precisa ser ampliada, e as limitações de
 cobertura das fontes, representatividade do clima e desempenho preditivo
 precisam acompanhar a apresentação dos resultados.

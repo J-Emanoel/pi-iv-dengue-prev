@@ -168,7 +168,7 @@ class FerramentasIA:
             return dict(uf="ES", municipios=matches, quantidade=len(matches))
         return self._consultar(obter)
 
-    def comparar_municipios(self, codigos_municipios, ano, semana_inicial=1, semana_final=None, fonte="sinan"):
+    def comparar_municipios(self, codigos_municipios, ano, semana_inicial=1, semana_final=None, fonte="sinan", *, incluir_semanas=False):
         if len(set(codigos_municipios)) != len(codigos_municipios):
             raise ValueError("Informe municípios distintos para a comparação.")
         historicos = [self.consultar_historico(codigo, ano, semana_inicial, semana_final, fonte)
@@ -182,6 +182,12 @@ class FerramentasIA:
                         if s["semana_epidemiologica"] in comuns) if comuns else None
             municipios.append(dict(codigo_ibge=historico["codigo_ibge"], nome_municipio=historico["nome_municipio"],
                 resumo_intervalo=historico["resumo"], registros_nas_semanas_comuns=total))
+            if incluir_semanas:
+                municipios[-1]["semanas"] = [
+                    {campo: semana[campo] for campo in ("semana_epidemiologica", "data_inicio", "data_fim",
+                        "registros_notificados", "registros_por_100_mil")}
+                    for semana in historico["semanas"]
+                ]
         referencia = municipios[0]["registros_nas_semanas_comuns"]
         for municipio in municipios:
             municipio["diferenca_para_primeiro_municipio"] = (

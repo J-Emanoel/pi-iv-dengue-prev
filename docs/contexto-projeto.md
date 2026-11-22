@@ -120,7 +120,8 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 - [ ] Ampliar a avaliação da IA: fidelidade aos dados/trechos, paráfrases, recusas clínicas e instruções indevidas em documentos.
 - [x] Estrutura React/Vite/TypeScript com componentes, navegação, filtros, panorama, ranking e exportação.
 - [x] Integração inicial de previsões, indisponibilidades, datas de referência, assistente e referências documentais à interface.
-- [ ] Acrescentar mapa e comparação municipal com critérios de período e cobertura explícitos.
+- [x] Mapa municipal IBGE, comparação de duas cidades por semanas comuns e indicadores de população/clima na interface.
+- [x] Intervalo de semanas, seleção pelo mapa/ranking, busca, CSV e compartilhamento dos filtros pelo endereço.
 - [ ] Conferir visualmente a interface, a responsividade e a navegação com usuários.
 - [ ] Testar os fluxos completos entre interface, API, banco, ML e Groq, incluindo falhas e limites de uso.
 - [ ] Preparar hospedagem, artefatos ML, variáveis de ambiente e controle de consumo da IA para publicação.
@@ -606,7 +607,33 @@ A revisão visual não pôde ser concluída: o navegador integrado estava
 indisponível e o controle do Firefox foi interrompido por falta de suporte à
 política de URLs nesse navegador Windows. Não foi usado outro mecanismo para
 contornar esse bloqueio. Responsividade e interações no navegador permanecem
-pendentes de conferência, assim como mapa, comparação municipal e publicação.
+pendentes de conferência. Naquela etapa, mapa, comparação municipal e publicação
+também estavam pendentes; a evolução de 22/11 está registrada a seguir.
+
+### Exploração do dashboard em 22/11/2026
+
+O Histórico reúne três visualizações: gráfico/ranking, mapa municipal e
+população/clima. A API fornece uma grade anual estadual; as seleções de cidade
+e semanas são derivadas localmente. O mapa usa as 78 geometrias oficiais do
+IBGE, em malha simplificada obtida na data acima. População é contada uma vez
+por município e ano. Sem denominador único, a taxa permanece indisponível.
+Clima só é resumido para uma cidade por vez, com cobertura mínima selecionável
+por sensor, sem somar estações compartilhadas como um total estadual.
+
+A nova página Comparar utiliza `GET /comparacao`, operação de leitura que
+reaproveita `FerramentasIA.comparar_municipios`, sem chamada Groq. As séries
+acompanham a resposta HTTP; os totais e as diferenças são calculados somente
+nas semanas observadas em comum. O contrato enviado à LLM permanece compacto.
+Filtros no endereço permitem compartilhar e restaurar a consulta. O CSV do
+histórico inclui clima/cobertura; o comparativo identifica as semanas comuns.
+
+Passaram 34 testes de frontend, a compilação TypeScript/Vite, 197 testes Python
+e 109 subtestes. As consultas reais de leitura retornaram 78 municípios e 4.056
+linhas anuais em cada fonte consultada (SINAN 2026 e SESA 2024). A comparação
+SINAN de Vitória e Vila Velha nas semanas 40–43 de 2026 confirmou quatro semanas
+comuns, 123 e 210 registros e diferença de 87. Nenhuma escrita ou chamada Groq
+foi solicitada nesta conferência. A revisão visual em navegador permanece
+pendente: o serviço de acesso ao navegador estava indisponível nesta sessão.
 
 ## Acompanhar a implementação
 

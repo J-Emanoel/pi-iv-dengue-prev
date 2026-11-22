@@ -1,4 +1,5 @@
 import type { FiltrosDados, Fonte, MensagemHistorico, RespostaAssistente } from '../types/api';
+import { intervaloSemanal } from '../lib/filtros';
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
@@ -66,6 +67,23 @@ export function caminhoPrevisoes(fonte: Fonte, codigoMunicipio: string): string 
   const parametros = new URLSearchParams({ fonte });
   if (codigoMunicipio) parametros.set('codigo_municipio', codigoMunicipio);
   return `/previsoes?${parametros}`;
+}
+
+export function caminhoComparacao(
+  filtros: FiltrosDados,
+  primeiro: string,
+  segundo: string,
+): string {
+  const { inicio, fim } = intervaloSemanal(filtros);
+  const params = new URLSearchParams({
+    fonte: filtros.fonte,
+    ano: String(filtros.ano),
+    semana_inicial: String(inicio),
+    semana_final: String(fim),
+  });
+  params.append('codigos_municipios', primeiro);
+  params.append('codigos_municipios', segundo);
+  return `/comparacao?${params}`;
 }
 
 export function perguntarAssistente(

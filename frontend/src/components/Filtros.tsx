@@ -1,6 +1,7 @@
 import { ChevronDown, Database } from 'lucide-react';
 import { useId } from 'react';
 import { FONTES } from '../lib/formatacao';
+import { intervaloSemanal, semanasNoAno } from '../lib/filtros';
 import type { FiltrosDados, Fonte, Municipio } from '../types/api';
 
 export interface PropriedadesFiltros {
@@ -8,7 +9,7 @@ export interface PropriedadesFiltros {
   atualizar: (filtros: FiltrosDados) => void;
   municipios: Municipio[];
   cadastroIndisponivel: boolean;
-  modo?: 'historico' | 'previsao' | 'assistente';
+  modo?: 'historico' | 'previsao' | 'assistente' | 'comparacao';
   desabilitado?: boolean;
 }
 
@@ -17,6 +18,7 @@ const ORIENTACOES = {
   previsao: 'O período da previsão depende dos dados disponíveis. Ele aparece junto do resultado.',
   assistente:
     'O município escolhido acompanha sua pergunta. Para assuntos gerais, deixe todos os municípios.',
+  comparacao: 'As cidades são comparadas na mesma fonte e nas semanas observadas em comum.',
 };
 
 export function Filtros({
@@ -28,7 +30,8 @@ export function Filtros({
   desabilitado = false,
 }: PropriedadesFiltros) {
   const id = useId();
-  const mostrarAno = modo === 'historico';
+  const mostrarAno = modo === 'historico' || modo === 'comparacao';
+  const { inicio, fim, maximo } = intervaloSemanal(filtros);
   const fonte = FONTES[filtros.fonte];
   const anos = Array.from(
     { length: fonte.anoFinal - 2019 },
@@ -37,7 +40,13 @@ export function Filtros({
   const vitoria = municipios.find((municipio) => municipio.codigo_ibge === '320530');
 
   function mudarFonte(base: Fonte) {
-    atualizar({ ...filtros, fonte: base, ano: FONTES[base].anoFinal });
+    atualizar({
+      ...filtros,
+      fonte: base,
+      ano: FONTES[base].anoFinal,
+      semanaInicial: undefined,
+      semanaFinal: undefined,
+    });
   }
 
   return (
@@ -45,11 +54,13 @@ export function Filtros({
       <div className="filter-intro">
         <div>
           <h2 id={`${id}-titulo`}>
-            {mostrarAno
-              ? 'Escolha o município e o ano'
-              : modo === 'assistente'
-                ? 'Município da conversa'
-                : 'Escolha o município'}
+            {modo === 'comparacao'
+              ? 'Período da comparação'
+              : mostrarAno
+                ? 'Escolha o município e o ano'
+                : modo === 'assistente'
+                  ? 'Município da conversa'
+                  : 'Escolha o município'}
           </h2>
           <p>{ORIENTACOES[modo]}</p>
         </div>
@@ -67,33 +78,46 @@ export function Filtros({
       <fieldset disabled={desabilitado} className="filter-controls">
         <legend className="sr-only">Selecione os dados da consulta</legend>
         <div className="filter-fields">
-          <div className="field municipality-field">
-            <label htmlFor={`${id}-municipio`}>
-              {modo === 'assistente' ? 'Município de referência (opcional)' : 'Município'}
-            </label>
-            <select
-              id={`${id}-municipio`}
-              value={filtros.codigoMunicipio}
-              onChange={(evento) => atualizar({ ...filtros, codigoMunicipio: evento.target.value })}
-            >
-              <option value="">Todos os municípios do Espírito Santo</option>
-              {municipios.map((municipio) => (
-                <option key={municipio.codigo_ibge} value={municipio.codigo_ibge}>
-                  {municipio.nome}
-                </option>
-              ))}
-            </select>
-            {cadastroIndisponivel && (
-              <small className="field-note">Não foi possível carregar a lista de municípios.</small>
-            )}
-          </div>
+          {modo !== 'comparacao' && (
+            <div className="field municipality-field">
+              <label htmlFor={`${id}-municipio`}>
+                {modo === 'assistente' ? 'Município de referência (opcional)' : 'Município'}
+              </label>
+              <select
+                id={`${id}-municipio`}
+                value={filtros.codigoMunicipio}
+                onChange={(evento) =>
+                  atualizar({ ...filtros, codigoMunicipio: evento.target.value })
+                }
+              >
+                <option value="">Todos os municípios do Espírito Santo</option>
+                {municipios.map((municipio) => (
+                  <option key={municipio.codigo_ibge} value={municipio.codigo_ibge}>
+                    {municipio.nome}
+                  </option>
+                ))}
+              </select>
+              {cadastroIndisponivel && (
+                <small className="field-note">
+                  Não foi possível carregar a lista de municípios.
+                </small>
+              )}
+            </div>
+          )}
           {mostrarAno && (
             <div className="field year-field">
               <label htmlFor={`${id}-ano`}>Ano dos registros</label>
               <select
                 id={`${id}-ano`}
                 value={filtros.ano}
-                onChange={(evento) => atualizar({ ...filtros, ano: Number(evento.target.value) })}
+                onChange={(evento) =>
+                  atualizar({
+                    ...filtros,
+                    ano: Number(evento.target.value),
+                    semanaInicial: undefined,
+                    semanaFinal: undefined,
+                  })
+                }
               >
                 {anos.map((ano) => (
                   <option key={ano}>{ano}</option>
@@ -101,7 +125,51 @@ export function Filtros({
               </select>
             </div>
           )}
-          {filtros.codigoMunicipio && (
+          {mostrarAno && (
+            <>
+              <div className="field week-field">
+                <label htmlFor={`${id}-de`}>Da semana</label>
+                <select
+                  id={`${id}-de`}
+                  value={inicio}
+                  onChange={(e) =>
+                    atualizar({
+                      ...filtros,
+                      semanaInicial: Number(e.target.value),
+                      semanaFinal: Math.max(Number(e.target.value), fim),
+                    })
+                  }
+                >
+                  {Array.from({ length: maximo }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field week-field">
+                <label htmlFor={`${id}-ate`}>Até a semana</label>
+                <select
+                  id={`${id}-ate`}
+                  value={fim}
+                  onChange={(e) =>
+                    atualizar({
+                      ...filtros,
+                      semanaFinal: Number(e.target.value),
+                      semanaInicial: Math.min(inicio, Number(e.target.value)),
+                    })
+                  }
+                >
+                  {Array.from({ length: semanasNoAno(filtros.ano) }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+          {filtros.codigoMunicipio && modo !== 'comparacao' && (
             <button
               type="button"
               className="text-button reset-filters"

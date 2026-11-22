@@ -5,6 +5,9 @@ export interface FiltrosDados {
   fonte: Fonte;
   ano: number;
   codigoMunicipio: string;
+  semanaInicial?: number;
+  semanaFinal?: number;
+  compararCom?: string;
 }
 
 export interface Municipio {
@@ -24,6 +27,12 @@ export interface RegistroSemanal {
   registros_por_100_mil: number | null;
   populacao: number | null;
   clima_presente: boolean;
+  data_referencia_populacao?: string | null;
+  tipo_populacao?: string | null;
+  fonte_populacao_url?: string | null;
+  nome_estacao?: string | null;
+  codigo_estacao?: string | null;
+  distancia_km?: number | null;
   precipitacao_mm: number | null;
   temperatura_media_c: number | null;
   umidade_media_pct: number | null;
@@ -38,6 +47,37 @@ export interface Metricas {
   mae: number;
   rmse: number;
   exemplos: number;
+}
+
+export interface SemanaComparacao {
+  semana_epidemiologica: number;
+  data_inicio: string;
+  data_fim: string;
+  registros_notificados: number | null;
+  registros_por_100_mil: number | null;
+}
+export interface MunicipioComparacao {
+  codigo_ibge: string;
+  nome_municipio: string;
+  resumo_intervalo: {
+    total_registros_observados: number | null;
+    semanas_consultadas: number;
+    semanas_com_registro: number;
+    semanas_sem_registro: number;
+  };
+  registros_nas_semanas_comuns: number | null;
+  diferenca_para_primeiro_municipio: number | null;
+  semanas: SemanaComparacao[];
+}
+export interface Comparacao {
+  fonte: Fonte;
+  referencia: string;
+  ano: number;
+  data_fim_ultima_semana_com_registros_na_fonte: string | null;
+  periodo: { inicio: string; fim: string };
+  semanas_observadas_em_comum: number[];
+  municipios: MunicipioComparacao[];
+  limitacoes: string[];
 }
 
 export interface ModeloPrevisao {
