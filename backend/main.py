@@ -28,7 +28,9 @@ from backend.schemas import (
     BuscaDocumentalResponse, CatalogoDocumentalResponse, ComparacaoResponse,
 )
 
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="API DenguePrev - ES", version="0.12.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 
 @app.exception_handler(BaseDocumentalIndisponivelError)
