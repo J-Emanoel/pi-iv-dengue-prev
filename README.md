@@ -10,7 +10,12 @@ As análises preservam a origem dos dados, a referência temporal e as limitaç�
 de interpretação.
 
 ## O que a aplicação oferece
+## Acesso online
 
+- **Aplicação Web (Frontend):** https://pi-iv-dengue-prev.vercel.app
+- **API e Documentação interativa (Backend):** https://dengueprev-api.onrender.com/docs
+
+> **Nota:** A API está hospedada no plano gratuito do Render e entra em hibernação após 15 minutos sem uso. No primeiro acesso, o carregamento inicial pode levar cerca de 40 a 50 segundos enquanto o servidor é reativado.
 - **Histórico municipal:** consulta por município, ano e semana epidemiológica.
 - **Exploração territorial:** mapa dos 78 municípios e comparação entre duas
   cidades nas semanas com observações em comum.
