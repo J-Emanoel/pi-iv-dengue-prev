@@ -10,6 +10,7 @@
     ".venv": true,
     "venv": true,
     ".tools": true,
+    ".npm-cache": true,
     "data": true,
     "ml/models": true,
     "arquivos-proj-int-iv.zip": true,

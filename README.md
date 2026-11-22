@@ -21,9 +21,10 @@ de interpretação.
 - **Respostas documentais:** recupera trechos oficiais sobre dengue e apresenta
   referências com origem e página.
 
-Esses recursos são disponibilizados pela API. O dashboard atual em Streamlit
-exibe o histórico SINAN; a interface React/Vite, reservada em `frontend/`,
-é a evolução planejada para reunir os recursos em uma experiência web.
+Esses recursos são disponibilizados pela API e pela interface React/Vite em
+`frontend/`, com Histórico, Previsões e Assistente. Os filtros atualizam as
+consultas automaticamente, e cada página oferece instruções de uso. O dashboard Streamlit
+permanece disponível como visualização provisória do histórico SINAN.
 
 ## Arquitetura
 
@@ -40,7 +41,7 @@ flowchart TD
     RAG -->|"Recuperação de trechos"| API
     API <-->|"Funções e resultados"| GROQ["LLM via Groq"]
     API -->|"Histórico via HTTP"| DASHBOARD["Dashboard Streamlit"]
-    FRONTEND["Interface React/Vite"] -.->|"Integração planejada"| API
+    FRONTEND["Interface React/Vite"] <-->|"HTTP"| API
 ```
 
 O processamento e o treinamento preparam os recursos que a aplicação utiliza.
@@ -56,7 +57,7 @@ os modelos e as fontes de dados em seus respectivos componentes.
 | Machine Learning | scikit-learn e Joblib · `ml/` e `backend/previsoes.py` | Compara estratégias com cortes temporais e disponibiliza estimativas reproduzíveis com métricas e elegibilidade. |
 | Assistente | Groq, HTTPX e function calling · `backend/assistente.py` e `ferramentas_ia.py` | Interpreta perguntas e explica resultados obtidos por operações de leitura previamente definidas. |
 | Recuperação documental | TF-IDF, scikit-learn e pypdf · `backend/rag.py` e `pipelines/preparar_rag.py` | Fundamenta respostas em trechos oficiais rastreáveis e fornece os dados para citações verificáveis. |
-| Visualização | Streamlit · `app.py`; React/Vite com ferramentas Node.js planejado em `frontend/` | Apresenta os resultados ao usuário e consome os serviços do backend. |
+| Visualização | React, TypeScript e Vite · `frontend/`; Streamlit provisório em `app.py` | Organiza navegação, filtros, histórico, estimativas e assistente. Node.js executa as ferramentas do frontend. |
 | Qualidade | Pytest, SQLite e provedores simulados · `tests/` | Verifica regras de processamento, integridade, contratos da API e controles da integração com IA. |
 
 A descrição de cada arquivo e suas funções está no
@@ -137,14 +138,19 @@ Inicie a API:
 .venv\Scripts\python.exe -B -m uvicorn backend.main:app --reload
 ```
 
-Em outro terminal, inicie o dashboard:
+Em outro terminal, use Node.js 24.16 ou uma versão compatível com
+`frontend/package.json` para instalar e iniciar a interface:
 
 ```powershell
-.venv\Scripts\python.exe -B -m streamlit run app.py
+npm.cmd --prefix frontend ci
+npm.cmd --prefix frontend run dev
 ```
 
 - [Documentação interativa da API](http://127.0.0.1:8000/docs).
-- [Dashboard local](http://localhost:8501).
+- [Interface local](http://127.0.0.1:5173).
+
+Execute cada linha separadamente, mantendo o terminal na raiz do projeto.
+No PowerShell, `npm.cmd` também evita o bloqueio do script `npm.ps1`.
 
 O [guia de execução](docs/execucao.md) detalha a obtenção das fontes, o ETL,
 a carga, a preparação dos modelos e os exemplos de consulta.
@@ -165,6 +171,8 @@ o [guia de execução](docs/execucao.md).
 
 ```powershell
 .venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
 ```
 
 ## Documentação do projeto

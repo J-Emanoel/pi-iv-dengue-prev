@@ -359,7 +359,86 @@ semanas com alguma linha na extração, não a proporção dos casos reais captu
 `semanas_com_fontes_e_cobertura` conta coincidências técnicas de registros,
 população e sensores acima do limiar; não valida completude ou aptidão preditiva.
 
-Dashboard, em outro terminal na raiz:
+### Interface React/Vite
+
+O frontend fica em `frontend/` e utiliza React, TypeScript e Vite. O ambiente
+foi validado com Node.js 24.16.0 e npm 11.13.0; as versões compatíveis estão em
+`engines` de `frontend/package.json`. O backend continua em Python.
+
+Com a API em execução, abra outro terminal na raiz:
+
+```powershell
+npm.cmd --prefix frontend ci
+npm.cmd --prefix frontend run dev
+```
+
+Execute cada linha separadamente, mantendo esse terminal aberto na raiz do
+projeto. `--prefix frontend` seleciona a pasta do frontend, sem precisar de
+`cd`. Para uma instalação já preparada, basta executar a segunda linha.
+
+No PowerShell, `npm.cmd` funciona mesmo quando a política local bloqueia
+`npm.ps1`; não é necessário alterar a política de execução. A `.venv` é o
+ambiente Python do backend e não é necessária para iniciar o frontend.
+
+Abra `http://127.0.0.1:5173`. As páginas são:
+
+- **Histórico** (`/`): escolha município e ano; os registros, o gráfico e a
+  tabela se atualizam automaticamente. “Experimentar com Vitória” seleciona
+  essa cidade nos dados reais. “Ver todos os municípios” retorna à consulta
+  estadual e ao ranking. “Baixar dados (CSV)” exporta a seleção atual.
+- **Previsões** (`/estimativas`): selecione um município para destacar seu
+  resultado, período, última contagem e motivo quando faltarem dados. O ano
+  epidemiológico vem da API. A explicação do método e da avaliação fica abaixo.
+- **Assistente** (`/assistente`): selecione uma cidade, se necessário, escreva
+  no campo “Sua pergunta” e clique em “Enviar pergunta”. Os exemplos apenas
+  preenchem o texto. Leia a resposta, consulte suas referências e use “Fazer
+  outra pergunta” para voltar ao campo ou “Nova conversa” para limpar o histórico.
+
+Cada página possui a seção expansível “Como usar esta página” ao final do
+conteúdo. O acesso “Como usar” no topo abre essa seção e leva até ela. A base
+consultada está identificada nos filtros; abra “Alterar base” para escolher
+SINAN ou SESA/e-SUS VS. O assistente não exige selecionar um ano: perguntas
+sobre um período específico devem incluí-lo no texto.
+
+Os dados são lidos da API; não há modo demonstrativo nem preenchimento de
+ausências com zero. Mudar a fonte seleciona seu último ano configurado.
+No assistente, trocar fonte ou município inicia uma nova conversa. O município
+selecionado acompanha cada pergunta enviada; sem seleção, vale o texto escrito.
+O envio é explícito, fica bloqueado enquanto aguarda a resposta e não tem
+retry automático no frontend. Em caso de falha, o texto é preservado para uma
+tentativa manual. Selecionar um exemplo, limpar a conversa ou mudar filtros
+não chama o Groq.
+
+Por padrão, o Vite encaminha `/api` para `http://127.0.0.1:8000`. Para mudar o
+destino local, crie `frontend/.env.local` a partir de
+`frontend/.env.example`, ajuste `API_PROXY_TARGET` e reinicie o Vite.
+`VITE_API_BASE_URL` é público e configura o prefixo usado pelo navegador.
+O `.env` confidencial da raiz pertence ao backend; chaves Groq e credenciais
+de banco não devem ser copiadas para variáveis `VITE_*`.
+
+`package-lock.json` é versionado para reproduzir a instalação com `npm.cmd --prefix frontend ci`.
+`node_modules/`, `dist/`, `.npm-cache/` e configurações locais ficam ignorados
+pelo Git. Na raiz do projeto, os comandos de verificação são:
+
+```powershell
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
+npm.cmd --prefix frontend run format
+```
+
+`build` verifica os tipos e gera `frontend/dist/`. As páginas são carregadas
+separadamente para reduzir o código inicial. `format` padroniza o código com
+Prettier. Os testes usam respostas simuladas, sem consumir a cota Groq.
+
+O proxy configurado é de desenvolvimento. Para publicar o bundle estático,
+será necessário servir as rotas da interface com fallback para `index.html`
+e encaminhar `/api` ao FastAPI no mesmo domínio, ou configurar explicitamente
+as origens permitidas no backend. Publicação e controle de acesso/consumo do
+assistente permanecem etapas próprias; o servidor local escuta em loopback.
+
+### Dashboard provisório Streamlit
+
+O dashboard anterior continua disponível. Em outro terminal na raiz:
 
 ```powershell
 .venv\Scripts\python.exe -m streamlit run app.py
@@ -662,7 +741,8 @@ consultar funções e responder por esse protocolo de recusa.
 
 O cliente usa HTTPX, já presente nas dependências, conforme o [protocolo oficial
 de tool calling](https://console.groq.com/docs/tool-use/local-tool-calling).
-A recuperação documental está descrita abaixo. A interface definitiva ainda está pendente.
+A recuperação documental está descrita abaixo. A interface React/Vite inicial
+integra o assistente; a conferência visual e os testes completos de uso permanecem pendentes.
 Antes de publicar a rota, será necessário definir controle de acesso e limites
 de uso do provedor; nesta etapa o uso é local.
 
@@ -734,6 +814,8 @@ Após alterar a base, reinicie a API para recarregar o cache.
 
 ```powershell
 .venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
 ```
 
 Os testes automatizados de banco usam SQLite local e os testes da LLM usam

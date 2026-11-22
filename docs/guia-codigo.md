@@ -11,8 +11,8 @@ de instalação, preparação e execução estão no [guia de execução](execuc
 O projeto tem processamento de dados, PostgreSQL compartilhado no Supabase,
 API FastAPI, experimentos de Machine Learning e assistente com Groq, consultas
 controladas e recuperação de documentos. A visualização atual é um dashboard
-provisório em Streamlit. `frontend/` está reservado para a interface React/Vite;
-essa interface ainda será implementada.
+provisório em Streamlit. `frontend/` contém a interface inicial React/Vite e
+TypeScript, com panorama, estimativas e assistente conectados à API.
 
 Há três fluxos principais:
 
@@ -53,7 +53,7 @@ gerado pelo Groq. O modelo de linguagem não treina o previsor epidemiológico.
 | `scripts/` | Inspeção auxiliar dos CSVs e ZIPs. |
 | `tests/` | Verificação automatizada das regras e integrações locais. |
 | `docs/` | Planejamento, avaliações, catálogos das fontes e este guia. |
-| `frontend/` | Espaço reservado para a interface React/Vite. |
+| `frontend/` | Interface React/Vite com componentes, páginas, contratos e acesso à API. |
 | `.vscode/` | Configuração de visualização do projeto no VS Code. |
 | `app.py` | Dashboard provisório em Streamlit. |
 | `README.md` | Apresentação do produto, arquitetura e início rápido. |
@@ -61,8 +61,8 @@ gerado pelo Groq. O modelo de linguagem não treina o previsor epidemiológico.
 | `.env.example` | Modelo fictício das configurações locais. |
 | `.gitignore` | Regras que mantêm credenciais, dados grandes e arquivos gerados fora dos commits. |
 
-Os arquivos `.gitkeep` de `frontend/` e `ml/` são marcadores vazios para
-preservar diretórios no Git. Eles não executam nenhuma função da aplicação.
+O arquivo `ml/.gitkeep` é um marcador vazio mantido da estrutura inicial.
+O marcador de `frontend/` foi substituído pelos arquivos da interface.
 
 ## 3. Fontes de dados utilizadas
 
@@ -80,6 +80,53 @@ permanece diferente de uma contagem observada igual a zero.
 
 ## 4. Arquivos da interface e da API
 
+### `frontend/`: a interface React/Vite
+
+Node.js executa o servidor de desenvolvimento e as ferramentas de compilação.
+A interface renderizada no navegador é React; o acesso ao banco e ao Groq
+continua no backend Python. TypeScript descreve os contratos e ajuda a detectar
+incompatibilidades antes da execução.
+
+| Arquivo ou grupo em `frontend/` | Responsabilidade |
+| --- | --- |
+| `index.html` e `src/main.tsx` | Documento inicial e montagem do React com o roteador. |
+| `src/App.tsx` | Rotas, filtros compartilhados e carregamento do cadastro municipal. As páginas são importadas sob demanda. |
+| `src/components/AppLayout.tsx` | Marca, navegação, localização da página e rodapé comuns. O acesso “Como usar” abre as instruções da página. |
+| `src/components/Filtros.tsx` | Seletores de município e ano, escolha expansível da base e retorno à consulta estadual. Explica a atualização automática e adapta os controles a cada página. |
+| `src/components/AjudaPagina.tsx` | Instruções expansíveis de uso, reutilizadas nas três páginas. |
+| `src/components/Painel.tsx` | Cabeçalhos, cartões de indicadores e painéis reutilizáveis. |
+| `src/components/EstadoConsulta.tsx` | Estados de carregamento, erro, tentativa manual e ausência de dados. |
+| `src/hooks/useApi.ts` | Ciclo das leituras HTTP; cancela consultas antigas e evita mostrar dados de outro filtro. |
+| `src/services/api.ts` | Prefixo da API, requisições, erros, timeouts, caminhos das fontes e envio explícito de perguntas. |
+| `src/types/api.ts` | Contratos TypeScript consumidos da API, incluindo valores opcionais e ausência. A referência completa continua em `backend/schemas.py`. |
+| `src/features/panorama/` | Página do histórico, gráfico, ranking e funções puras que resumem observações sem substituir ausência por zero. |
+| `src/features/estimativas/EstimativasPage.tsx` | Datas do snapshot e do alvo, avaliação do modelo, estimativas e motivos por município. Usa o ano epidemiológico retornado pela API. |
+| `src/features/assistente/AssistentePage.tsx` e `MensagemResposta.tsx` | Formulário com envio explícito, sugestões, biblioteca e apresentação das respostas e referências. |
+| `src/features/assistente/useConversa.ts` | Histórico em memória, município enviado como contexto, limite de texto, cancelamento e bloqueio de envios duplicados. Reinicia a conversa ao trocar fonte ou cidade. |
+| `src/lib/formatacao.ts` e `csv.ts` | Formatação de números/datas, configuração das fontes, URLs permitidas e exportação de dados. |
+| `src/styles.css` | Paleta em variáveis CSS, tipografia, layouts, estados de foco e regras responsivas. Azul identifica navegação e consultas; violeta acompanha previsões e assistente. |
+| Arquivos `*.test.ts` e `*.test.tsx` em `src/` | Ausência/zero, somas parciais, cobertura, CSV e requisições. Os testes de interação verificam filtros e conversa com respostas simuladas: sugestão sem envio, contexto municipal, envio único e recuperação de falhas. Não chamam o Groq. |
+| `vite.config.ts` | Plugin React e proxy local `/api` para o backend; lê a configuração do próprio frontend. |
+| `package.json`, `package-lock.json` e `tsconfig.json` | Comandos, dependências fixadas e regras de verificação de tipos. |
+| `.env.example` e `.npmrc` | Exemplo de configuração pública e cache npm local ignorado pelo Git. |
+
+**Importância:** a interface recebe dados pelos serviços, usa componentes
+comuns e mantém as regras de cada página em sua funcionalidade. As somas do
+panorama são descritivas e identificam a cobertura de observações; previsões
+e comparações solicitadas pela LLM são calculadas nos serviços do backend.
+O frontend não possui dados fictícios de fallback e não treina modelos.
+
+A composição visual usa navegação branca, cabeçalho em azul e violeta e
+indicadores com divisórias, concentrando o destaque de cor no cabeçalho e
+nas ações. Gráfico, marca e ícone da aba acompanham a identidade da interface.
+As instruções ficam no fim de cada página e podem ser abertas pelo topo.
+
+O contexto da conversa fica apenas em memória e é reiniciado quando muda a
+fonte ou o município. Não existe envio automático de sugestões. Os testes de
+interação usam um DOM simulado com jsdom e Testing Library. A revisão visual
+foi bloqueada pelo controle de navegador disponível nesta máquina; o layout
+e a responsividade ainda precisam de conferência no navegador.
+
 ### `app.py`
 
 É a interface provisória. `carregar_dados()` consulta `/casos` pela API;
@@ -89,8 +136,8 @@ e apresenta erros de acesso.
 
 **Importância:** permite visualizar o histórico com a estrutura atual do
 backend. Esse dashboard consulta o SINAN; ainda não apresenta todos os recursos
-de previsões, assistente e RAG disponíveis na API. A interface React/Vite usará
-a API existente quando for desenvolvida.
+de previsões, assistente e RAG disponíveis na API. A interface React/Vite
+consulta esses recursos diretamente pelos serviços de `frontend/src/services/`.
 
 ### `backend/main.py`
 
@@ -488,6 +535,7 @@ ou atualizado. Para usar o que já foi preparado, iniciam-se a API e a interface
 | Rotas de previsões | Experimentos e snapshots locais correspondentes, com ambiente compatível. |
 | Busca documental | `docs/base-documental.json` válido e dependências instaladas. |
 | Assistente real | Configuração Groq válida; cada ferramenta depende dos dados que consulta. |
+| Interface React/Vite | Dependências npm instaladas e API acessível pelo proxy local ou pelo endereço configurado. |
 | Dashboard provisório | API acessível no endereço definido por `API_URL`. |
 
 O código, os testes, a documentação e os catálogos acompanham o Git. Os dados
@@ -497,8 +545,9 @@ reproduzir a preparação/treinamento ou receber um pacote compatível. Essa
 distribuição deve fazer parte da preparação do ambiente da demonstração final.
 
 A organização dos arquivos não conclui as etapas funcionais restantes.
-A interface React/Vite ainda precisa ser implementada e integrada aos recursos
-da API. A avaliação do assistente/RAG precisa ser ampliada, e as limitações de
+A interface React/Vite tem sua primeira integração implementada; mapa,
+comparação municipal e validação completa de uso continuam pendentes.
+A avaliação do assistente/RAG precisa ser ampliada, e as limitações de
 cobertura das fontes, representatividade do clima e desempenho preditivo
 precisam acompanhar a apresentação dos resultados.
 

@@ -118,8 +118,10 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 - [x] Inferência real via Groq e avaliação inicial das respostas com a conta utilizada.
 - [x] RAG inicial com documentos oficiais, busca local, referências verificáveis e avaliação inicial.
 - [ ] Ampliar a avaliação da IA: fidelidade aos dados/trechos, paráfrases, recusas clínicas e instruções indevidas em documentos.
-- [ ] Construir a interface React/Vite com filtros, indicadores, mapa, histórico, ranking e comparação municipal.
-- [ ] Integrar previsões, indisponibilidades, datas de referência, assistente e referências documentais à interface.
+- [x] Estrutura React/Vite/TypeScript com componentes, navegação, filtros, panorama, ranking e exportação.
+- [x] Integração inicial de previsões, indisponibilidades, datas de referência, assistente e referências documentais à interface.
+- [ ] Acrescentar mapa e comparação municipal com critérios de período e cobertura explícitos.
+- [ ] Conferir visualmente a interface, a responsividade e a navegação com usuários.
 - [ ] Testar os fluxos completos entre interface, API, banco, ML e Groq, incluindo falhas e limites de uso.
 - [ ] Preparar hospedagem, artefatos ML, variáveis de ambiente e controle de consumo da IA para publicação.
 - [ ] Publicar o MVP e conferir o acesso e os fluxos no ambiente publicado.
@@ -563,8 +565,48 @@ esperados em seis perguntas; a formulação sobre verão não recuperou a págin
 de prevenção durante todo o ano. A busca lexical e a fidelidade das respostas
 permanecem pontos de avaliação, sem promessa de ausência de alucinações.
 
-O próximo bloco é a interface React/Vite, com histórico, previsões, assistente
-e referências, seguido de integração, testes de uso e publicação.
+### Primeira interface React/Vite
+
+A interface inicial está em `frontend/`, com React, TypeScript, Vite e rotas
+para Histórico, Previsões e Assistente. Contratos, acesso HTTP, controle de
+carregamento, componentes comuns e funcionalidades ficam separados em `src/`.
+Os componentes recebem as fontes e os dados da API; não contêm credenciais.
+
+O panorama consulta as visões analíticas por ano, mantém lacunas no gráfico e
+na exportação e identifica a cobertura municipal de cada soma semanal. O ranking
+usa registros observados, sem apresentá-los como risco. As estimativas mostram
+o ano epidemiológico retornado pelo backend, datas do snapshot, valores nulos,
+motivos e avaliação do experimento. O assistente inclui referências e consumo
+informado; enviar uma pergunta exige ação explícita, sem retry no frontend.
+
+O ajuste de usabilidade simplificou os nomes, ampliou a tipografia e o contraste
+e incluiu instruções expansíveis em cada página. Os filtros explicam a
+atualização automática e deixam a troca de base numa opção secundária.
+Selecionar uma cidade destaca sua previsão e remove o ranking individual
+do histórico. No assistente, o município acompanha a pergunta; trocar cidade
+ou fonte reinicia a conversa. As sugestões apenas preenchem o campo e o botão
+“Enviar pergunta” informa a ação. O estado da conversa fica separado no hook
+`useConversa`, com bloqueio de envio duplicado e preservação do texto em falhas.
+
+Em 19/11, a revisão visual a partir da referência enviada adotou navegação
+branca, faixa de cabeçalho em azul e violeta, indicadores agrupados com
+divisórias e gráfico azul. As instruções foram movidas ao fim da página, com
+acesso que as abre pelo topo. A paleta está centralizada em variáveis CSS;
+marca e ícone da aba seguem as mesmas cores. Essa alteração preserva as
+consultas, os filtros e as regras de interpretação dos dados.
+
+Compilação TypeScript/Vite e 20 testes de frontend passaram, incluindo
+interações de filtros e conversa em DOM simulado. Na conferência do backend,
+os 194 testes e 102 subtestes Python também passaram. Consultas GET pelo proxy Vite retornaram
+200 para cadastro, histórico SINAN/SESA, previsões das duas fontes, catálogo
+documental e estado da configuração do assistente. Nenhuma pergunta real foi
+enviada ao Groq nesta etapa e não houve escrita no banco.
+
+A revisão visual não pôde ser concluída: o navegador integrado estava
+indisponível e o controle do Firefox foi interrompido por falta de suporte à
+política de URLs nesse navegador Windows. Não foi usado outro mecanismo para
+contornar esse bloqueio. Responsividade e interações no navegador permanecem
+pendentes de conferência, assim como mapa, comparação municipal e publicação.
 
 ## Acompanhar a implementação
 
