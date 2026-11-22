@@ -83,7 +83,7 @@ Uma pergunta sobre números municipais utiliza as ferramentas de dados.
 Uma pergunta conceitual ou preventiva utiliza a base documental. Os cálculos
 das estimativas e comparações são executados pelo backend.
 
-## Fontes de dados
+## Fontes de dados 
 
 | Fonte | Informação utilizada | Contribuição |
 | --- | --- | --- |
