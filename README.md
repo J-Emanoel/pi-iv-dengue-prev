@@ -73,20 +73,13 @@ A descrição de cada arquivo e suas funções está no
 
 ## Como funciona
 
-1. **Preparar:** os pipelines leem os arquivos originais, validam seu conteúdo
-   e geram agregados e resumos com identificação da origem.
-2. **Organizar:** o carregador sincroniza os dados no PostgreSQL. As visões
-   combinam município, calendário, registros, população e clima.
-3. **Avaliar:** o ML congela a fonte selecionada, constrói variáveis históricas,
-   compara estratégias e salva o experimento e sua avaliação.
-4. **Consultar:** a API entrega histórico, indicadores e estimativas com
-   filtros, datas, fontes e critérios de disponibilidade.
-5. **Explicar:** o assistente solicita funções do backend ou recupera documentos.
-   A LLM recebe os resultados e o backend valida a resposta e suas referências.
+1. **Preparar:** os pipelines leem os arquivos originais, validam seu conteúdo e geram agregados e resumos com identificação de origem.
+2. **Organizar:** o carregador sincroniza os dados no PostgreSQL, por meio de visões que integram município, calendário, registros, população e clima.
+3. **Avaliar:** o módulo de ML fixa a fonte selecionada, cria variáveis históricas, compara estratégias e registra o experimento com sua avaliação.
+4. **Consultar:** a API disponibiliza histórico, indicadores e estimativas respeitando filtros, datas, fontes e regras de disponibilidade.
+5. **Explicar:** o assistente aciona funções do backend ou consulta documentos oficiais; a LLM sintetiza os resultados e o backend valida a resposta e suas referências.
 
-Uma pergunta sobre números municipais utiliza as ferramentas de dados.
-Uma pergunta conceitual ou preventiva utiliza a base documental. Os cálculos
-das estimativas e comparações são executados pelo backend.
+Consultas sobre dados e números municipais usam as ferramentas de dados, enquanto perguntas conceituais ou preventivas recorrem à base documental. Todos os cálculos de estimativas e comparações permanecem no backend.
 
 ## Fontes de dados 
 
@@ -110,18 +103,12 @@ edições, páginas e hashes dos documentos do RAG.
 
 ## Interpretação dos resultados
 
-- **Ausência e zero são distintos:** semanas sem observação permanecem
-  identificadas como ausentes, inclusive nas consultas e na elegibilidade do ML.
-- **As estimativas seguem o snapshot:** a resposta informa a data dos dados
-  e o período estimado. Nos experimentos ativos, a persistência foi selecionada
-  e repete a última contagem observada; não foi demonstrado ganho sobre essa referência.
-- **O clima tem limites de representação:** os vínculos usam proximidade
-  geográfica e cobertura por sensor, com adequação meteorológica ainda a avaliar.
-- **As respostas da IA exigem evidência:** funções permitidas, validação de
-  argumentos e referências ajudam a controlar o fluxo; a qualidade semântica
-  também é avaliada por perguntas e conferência dos resultados.
+- **Ausência e zero têm significados distintos:** semanas sem registros observados permanecem marcadas como ausentes tanto nas consultas quanto nos critérios de elegibilidade do ML.
+- **As estimativas refletem o snapshot ativo:** cada resposta informa a data de referência dos dados e o horizonte estimado. Nos experimentos vigentes, o modelo de persistência (que repete a última contagem observada) foi selecionado por não haver ganho comprovado sobre essa linha de base.
+- **O clima possui limites de representação espacial:** a associação entre municípios e estações baseia-se em proximidade geográfica e disponibilidade de leitura dos sensores, com adequação meteorológica ainda em avaliação.
+- **As respostas da IA exigem rastreabilidade:** o fluxo é controlado por funções autorizadas, validação de parâmetros e citação de fontes, sendo complementado por testes semânticos e conferência dos resultados.
 
-As avaliações e suas limitações estão documentadas em
+O detalhamento técnico dessas avaliações e suas respectivas limitações estão documentados em
 [ML SESA](docs/avaliacao-ml.md),
 [SINAN 2026](docs/avaliacao-sinan-2026.md) e
 [assistente e RAG](docs/avaliacao-assistente.md).
