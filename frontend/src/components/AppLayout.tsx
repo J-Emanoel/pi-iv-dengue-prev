@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router';
+import { AlternarTema } from './AlternarTema';
 
 const navegacao = [
   {
@@ -93,12 +94,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <span aria-hidden="true">/</span>
             <strong>{pagina?.nome || 'DenguePrev'}</strong>
           </div>
-          {pagina && (
-            <a className="help-link" href="#como-usar" onClick={abrirAjuda}>
-              <CircleHelp size={17} aria-hidden="true" />
-              Como usar
-            </a>
-          )}
+          <div className="topbar-actions">
+            {pagina && (
+              <a className="help-link" href="#como-usar" onClick={abrirAjuda}>
+                <CircleHelp size={17} aria-hidden="true" />
+                Como usar
+              </a>
+            )}
+            <AlternarTema />
+          </div>
         </header>
         <main id="conteudo" className="page-content" tabIndex={-1}>
           {children}
