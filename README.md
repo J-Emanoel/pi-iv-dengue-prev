@@ -34,8 +34,7 @@ O assistente é público, com limites de uso persistentes no backend.
 Esses recursos são disponibilizados pela API e pela interface React/Vite em
 `frontend/`, com Histórico, Comparar, Previsões e Assistente. O histórico reúne
 gráfico, mapa, população e clima; os filtros podem ser compartilhados pelo link
-da consulta. Cada página oferece instruções de uso. O dashboard Streamlit
-permanece disponível como visualização provisória do histórico SINAN.
+da consulta. Cada página oferece instruções de uso.
 
 ## Arquitetura
 
@@ -51,7 +50,6 @@ flowchart TD
     PREPARACAO --> RAG["Base RAG local"]
     RAG -->|"Recuperação de trechos"| API
     API <-->|"Funções e resultados"| GROQ["LLM via Groq"]
-    API -->|"Histórico via HTTP"| DASHBOARD["Dashboard Streamlit"]
     FRONTEND["Interface React/Vite"] <-->|"HTTP"| API
 ```
 
@@ -179,6 +177,10 @@ dos commits. Quem prepara outro ambiente deve obter os dados necessários e
 reproduzir os experimentos ou disponibilizar os artefatos compatíveis conforme
 o [guia de execução](docs/execucao.md).
 
+O comando `python -B -m scripts.pacote_modelos` exporta, confere e restaura os
+experimentos ativos com seus snapshots. O pacote é distribuído separadamente
+do código, com hash de integridade e versões do ambiente.
+
 ### Testes
 
 ```powershell
@@ -186,6 +188,18 @@ o [guia de execução](docs/execucao.md).
 npm.cmd --prefix frontend test
 npm.cmd --prefix frontend run build
 ```
+
+As mesmas suítes estão configuradas em GitHub Actions para pushes e pull
+requests, sem credenciais do banco ou Groq. Com a API iniciada, a conferência
+dos recursos reais pode ser executada sem perguntas à LLM:
+
+```powershell
+.venv\Scripts\python.exe -B -m scripts.verificar_entrega --api http://127.0.0.1:8000
+```
+
+Esse comando verifica versão, cadastro, históricos, previsões, comparação,
+documentos, configuração do assistente e CORS. A avaliação de respostas reais
+da IA e a revisão visual têm procedimentos próprios no guia de execução.
 
 ## Documentação do projeto
 

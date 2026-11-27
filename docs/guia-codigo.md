@@ -1,7 +1,7 @@
 # Guia dos fontes do DenguePrev
 
 Este relatório explica os arquivos mantidos no projeto, revisados em
-26/11/2026. O objetivo é permitir que cada integrante acompanhe o caminho dos
+27/11/2026. O objetivo é permitir que cada integrante acompanhe o caminho dos
 dados e encontre o código responsável por cada tarefa. A visão geral e a
 arquitetura ficam no [README principal](../README.md); os comandos completos
 de instalação, preparação e execução estão no [guia de execução](execucao.md).
@@ -50,7 +50,8 @@ gerado pelo Groq. O modelo de linguagem não treina o previsor epidemiológico.
 | `backend/` | Banco, API, serviço de previsões e assistente. |
 | `pipelines/` | Preparação e validação das fontes de dados e documentos. |
 | `ml/` | Preparação dos exemplos e comparação dos modelos. |
-| `scripts/` | Inspeção auxiliar dos CSVs e ZIPs. |
+| `scripts/` | Inspeção das fontes, transporte dos modelos e conferência da aplicação. |
+| `.github/workflows/verificacoes.yml` | Testes Python e frontend e compilação em pushes e pull requests. Sem credenciais de produção e sem deploy automático. |
 | `tests/` | Verificação automatizada das regras e integrações locais. |
 | `docs/` | Planejamento, avaliações, catálogos das fontes e este guia. |
 | `frontend/` | Interface React/Vite com componentes, páginas, contratos e acesso à API. |
@@ -544,6 +545,20 @@ O primeiro comando apenas lista. O segundo extrai uma cópia para consulta,
 mantendo os caminhos originais dentro da pasta de destino. A extração não é
 necessária para iniciar a API. Novos backups de cargas
 futuras continuam sendo gravados em `data/interim/backups/`.
+
+### Ferramentas de preparação da entrega
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| `scripts/pacote_modelos.py` | Exporta somente as execuções ML ativas e seus snapshots. Confere caminhos, tamanhos e SHA-256. Restaura pacotes de origem conhecida sem substituir conteúdo diferente. Não executa Joblib nem acessa banco ou Groq. |
+| `scripts/verificar_entrega.py` | Confere por HTTP os contratos, filtros, totais comparativos, modelos, documentos e CORS. Usa somente GET/OPTIONS e devolve código de saída 1 se houver pendências. Não envia perguntas à LLM. |
+| `tests/test_pacote_modelos.py` | Verifica integridade, ausência de segredos, repetição da restauração e recusa de conflitos ou caminhos inesperados. |
+| `tests/test_verificar_entrega.py` | Confere continuidade após falhas, diagnóstico de versão antiga, ausência de POST, sigilo dos erros, totais comparativos e CORS. |
+
+Os scripts usam recursos já presentes no projeto. O transporte dos modelos
+usa a biblioteca padrão do Python e o hash compartilhado de `pipelines/arquivos.py`.
+Os JSONs dentro do pacote descrevem o experimento; não são novos fontes para
+versionar. O pacote gerado permanece em `data/interim/`, ignorado pelo Git.
 
 ## 13. O que é necessário para executar ou entregar
 

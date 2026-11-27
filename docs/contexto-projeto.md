@@ -100,7 +100,7 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 
 - [x] C1 e C2 entregues.
 - [x] SINAN consolidado, corrigido e validado no PostgreSQL compartilhado.
-- [x] Cadastro IBGE com 78 nomes reais, correspondência de códigos e nomes na API/Streamlit.
+- [x] Cadastro IBGE com 78 nomes reais, correspondência de códigos e nomes na API/interface React.
 - [x] População por município/ano com 546 referências documentadas no Supabase.
 - [x] Indicador descritivo de registros da extração por 100 mil habitantes, com referência populacional anual.
 - [ ] Validação da cobertura epidemiológica e das restrições de interpretação dos resultados.
@@ -126,6 +126,10 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 - [ ] Testar os fluxos completos entre interface, API, banco, ML e Groq, incluindo falhas e limites de uso.
 - [x] MVP publicado na Vercel/Render; cadastro, histórico, comparação, modelos, previsão SINAN e catálogo documental conferidos por HTTP.
 - [x] Preparar carregamento de até 90 segundos, cota persistente e CORS restrito no código local.
+- [x] Pacote dos dois experimentos ativos, com snapshots, hashes e restauração testada sem refazer ETL.
+- [x] Roteiro HTTP reproduzível sem chamadas Groq; oito grupos conferidos com o Supabase real.
+- [x] Workflow de testes Python/frontend e compilação preparado; execução no GitHub depende do próximo push.
+- [x] Avaliação adicional real do GPT-OSS 20B com resposta documental e recusa de prescrição, consumo registrado.
 - [ ] Publicar o chat público com limites de uso e conferir o fluxo completo em produção.
 - [ ] Consolidar documentação, reprodução do projeto, avaliações e limitações para a entrega final.
 
@@ -693,6 +697,43 @@ duas fontes e a interrupção das curvas em dados ausentes. Os caches Python
 e a saída de compilação foram removidos após a validação; são recriáveis.
 Essa revisão não executou ETL, treinamento, alterações no banco ou chamadas
 reais ao Groq. A conferência visual no navegador permanece pendente.
+
+## Preparação da entrega — 27/11/2026
+
+`scripts/pacote_modelos.py` exporta, confere e restaura as duas execuções
+ativas com os snapshots ligados a elas. O pacote local
+`data/interim/modelos-dengueprev-2026-11-26.zip` tem aproximadamente 4,85 MiB e
+SHA-256 `260fcb32eeea1a03e566f4f854e953f89eaa151f986d057e0d5245ae684a31b8`.
+Os 12 arquivos foram restaurados numa pasta temporária e os dois serviços
+carregaram: 78 municípios por fonte, 52 elegíveis na projeção SESA e 15 na SINAN.
+O pacote continua ignorado pelo Git; sua distribuição ainda depende do responsável.
+
+`scripts/verificar_entrega.py` confere oito grupos por GET/OPTIONS, sem
+perguntas ao Groq. Com a API local 0.13.0 e Supabase real, todos passaram.
+A primeira tentativa dentro do ambiente restrito foi impedida pela política
+de rede; a conferência externa autorizada completou os acessos normalmente.
+A API publicada ainda era anterior à 0.13.0: os recursos de dados responderam,
+mas o preflight retornou origem `*` e métodos amplos. A hospedagem indicou
+GPT-OSS 20B, e o `.env` local permaneceu com 120B.
+
+Foram feitos dois testes reais com 20B na API local, selecionado temporariamente
+no processo: resposta documental com R009/R010 conferidas e recusa clínica
+sem prescrição. Somaram três chamadas e 5.910 tokens informados. As chamadas
+externas foram encerradas; detalhes em `avaliacao-assistente.md`.
+
+A automação em `.github/workflows/verificacoes.yml` executará testes e build
+sem credenciais de produção. A suíte local passou com 219 testes Python,
+119 subtestes, 43 testes frontend, compilação e `pip check`.
+
+Próxima prioridade: o responsável pelo Render deve conferir o commit ativo,
+garantir os modelos em cada deploy, registrar o modelo LLM da demonstração e
+publicar a versão com cota/CORS explícitos. Depois, repetir o roteiro HTTP e
+conferir o formulário real, referências, celular e navegação com usuários.
+O acesso controlado ao navegador voltou a informar indisponibilidade nesta
+sessão. A revisão visual e a validação completa do ambiente publicado
+continuam pendentes, assim como a ampliação da avaliação semântica e a
+consolidação do material final. Limitações científicas de cobertura e
+representatividade climática permanecem declaradas.
 
 ## Acompanhar a implementação
 

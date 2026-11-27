@@ -598,6 +598,139 @@ mudanças. Os resultados dos modelos de árvores permanecem registrados na
 avaliação. Consulte o [relatório completo](avaliacao-ml.md) antes de interpretar
 as métricas como desempenho em todos os municípios ou períodos.
 
+## Transportar os modelos para outro ambiente
+
+As previsões dependem de arquivos que não entram no Git. O pacote de modelos
+reúne somente as duas execuções ativas, avaliações e snapshots agregados ligados
+a elas. Ele não contém `.env`, credenciais, ZIPs brutos, experimentos antigos ou
+os PDFs completos. O código e a base documental continuam vindo do repositório.
+
+Para gerar um pacote novo, use um nome de arquivo ainda não existente:
+
+```powershell
+.venv\Scripts\python.exe -B -m scripts.pacote_modelos exportar data/interim/modelos-dengueprev.zip
+.venv\Scripts\python.exe -B -m scripts.pacote_modelos conferir data/interim/modelos-dengueprev.zip
+```
+
+O comando informa o SHA-256 do ZIP e as versões de Python, NumPy, scikit-learn,
+Pandas e Joblib registradas nos experimentos. Compartilhe o pacote e seu hash
+com o responsável pelo ambiente, usando um anexo de Release como os dados
+originais. Não adicione esse ZIP ao commit.
+
+No outro ambiente, obtenha um pacote de origem conhecida e confira o hash
+informado pelo responsável. Na raiz do clone, substitua os campos do exemplo:
+
+```powershell
+python -B -m scripts.pacote_modelos restaurar CAMINHO/modelos-dengueprev.zip --sha256 HASH_DO_ZIP --destino .
+```
+
+`restaurar` confere todos os caminhos e hashes antes de copiar. Arquivos idênticos
+são reutilizados; qualquer arquivo diferente no destino interrompe a operação
+antes da cópia. O comando não substitui outra execução configurada silenciosamente.
+Ele não instala bibliotecas, não carrega o Joblib e não modifica o banco.
+
+Mantenha apenas o `requirements.txt` principal. Para usar o pacote atual,
+instale versões compatíveis com o ambiente registrado: Python 3.13,
+scikit-learn 1.9.1, NumPy 2.5.5, Pandas 2.3.3 e Joblib 1.6.0. Por exemplo,
+em um ambiente novo destinado a esse pacote:
+
+```powershell
+python -m pip install -r requirements.txt "scikit-learn==1.9.1" "numpy==2.5.5" "pandas==2.3.3" "joblib==1.6.0"
+python -m pip check
+```
+
+O carregador da aplicação também verifica a compatibilidade entre modelo,
+snapshot e dependências antes de prever. Se outro pacote indicar versões
+diferentes, use as versões dele ou reproduza o treinamento.
+
+No Render, restaurar manualmente os arquivos uma única vez pode não bastar:
+o responsável precisa integrar a obtenção/restauração do pacote à preparação
+de cada deploy ou usar o armazenamento persistente já configurado no serviço.
+Confirme a estratégia adotada antes de alterar o processo existente. Consulte
+as [regras de persistência do Render](https://render.com/docs/disks).
+
+## Conferir a entrega e a publicação
+
+Com a API local iniciada, execute:
+
+```powershell
+.venv\Scripts\python.exe -B -m scripts.verificar_entrega --api http://127.0.0.1:8000
+```
+
+Para conferir o backend publicado:
+
+```powershell
+.venv\Scripts\python.exe -B -m scripts.verificar_entrega --api https://dengueprev-api.onrender.com
+```
+
+O roteiro faz somente GET e um preflight OPTIONS. Confere oito grupos:
+versão/processo, 78 municípios, histórico/modelo/previsão de cada fonte,
+comparação de Vitória/Vila Velha, catálogo/busca documental, configuração
+Groq e CORS. Totais comparativos são recalculados a partir das séries recebidas.
+Não envia perguntas ao Groq, não consome a cota do chat e não modifica o banco.
+Saída 0 significa aprovação dessas verificações; saída 1 indica pendências.
+Um `/health` positivo sozinho não comprova disponibilidade dos outros recursos.
+
+### Testes automáticos no GitHub
+
+`.github/workflows/verificacoes.yml` executa as suítes Python e frontend e a
+compilação em pushes e pull requests. Também pode ser iniciado em Actions pelo
+evento manual. O workflow usa apenas permissão de leitura do repositório,
+SQLite e provedores simulados: não precisa de secrets Supabase/Groq e não
+publica a aplicação. Sua primeira execução remota depende do próximo push.
+As ações usadas seguem a documentação oficial de
+[Python](https://github.com/actions/setup-python) e
+[Node.js](https://github.com/actions/setup-node).
+
+### Alinhamento com o responsável pelo Render
+
+Na conferência de 27/11/2026, a versão local 0.13.0 passou nos oito grupos com
+o Supabase real. A API publicada ainda era anterior a essa versão; seus dados,
+modelos e documentos responderam, mas o CORS retornou `*`. O ambiente publicado
+indicou GPT-OSS 20B, enquanto o `.env` local continuou com GPT-OSS 120B. Os testes
+reais de 27/11 usaram 20B por configuração temporária do processo, sem alterar
+o `.env`, conforme [avaliação do assistente](avaliacao-assistente.md).
+
+Antes da demonstração, o responsável pelo serviço deve:
+
+1. Conferir em Deploys qual commit está ativo e se o branch vinculado é `main`.
+2. Garantir a restauração dos modelos e suas versões de dependências em cada
+   publicação, usando o pacote ou a estratégia existente no serviço.
+3. Manter `DATABASE_URL` e `GROQ_API_KEY` somente no backend. Registrar o
+   `GROQ_MODEL` efetivo e usar esse modelo na avaliação da demonstração.
+4. Configurar `CORS_ORIGINS` com a origem Vercel e, se necessário, as origens
+   locais do `.env.example`; retirar eventual `*`. A cota possui padrões no
+   código e sua tabela já foi preparada no Supabase compartilhado.
+5. Publicar o último commit. Se o deploy automático estiver desativado, usar
+   **Manual Deploy → Deploy latest commit**. Conferir os logs antes de repetir.
+6. Aguardar o deploy da interface e repetir `scripts.verificar_entrega` na API
+   publicada. Depois testar uma pergunta real pelo formulário e conferir as
+   referências e o consumo retornados.
+
+A automação de testes e a publicação são processos diferentes. O comportamento
+do deploy automático depende da configuração do serviço; veja a
+[documentação de deploy do Render](https://render.com/docs/deploys).
+
+### Roteiro de demonstração
+
+1. No Histórico, escolher SINAN, Vitória, 2026 e semanas 40–43; explorar o
+   gráfico, o mapa e a exportação do recorte.
+2. Em Comparar, escolher Vitória e Vila Velha no mesmo intervalo. Na extração
+   conferida, são quatro semanas comuns, 123 e 210 registros, diferença de 87.
+3. Em População e clima, selecionar uma cidade e alternar sensor/cobertura.
+   Explicar as lacunas e a referência populacional anual.
+4. Em Previsões, conferir as datas do snapshot e do alvo. A persistência SINAN
+   disponível estima 01–07/11/2026; não apresenta a semana atual automaticamente.
+5. No Assistente, enviar uma pergunta documental e abrir suas referências.
+   Uma sugestão não envia a pergunta automaticamente. Respeitar a cota global;
+   não consumir vinte perguntas só para demonstrar o bloqueio diário.
+6. Explicar as limitações de cobertura, clima por proximidade, previsões
+   retrospectivas e fidelidade da IA. A avaliação não garante respostas futuras.
+
+A conferência visual em desktop/celular e com usuários continua necessária.
+O navegador controlado estava indisponível nesta sessão; os testes de frontend
+usam DOM simulado e não substituem essa revisão.
+
 ## Atualização SINAN e INMET de 2026
 
 A carga já foi aplicada no Supabase compartilhado. Para consultar e treinar
