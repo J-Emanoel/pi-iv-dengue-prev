@@ -40,6 +40,6 @@ export const fonteMalha = malha.fonte_url;
 
 export function corDoMapa(valor: number | null, maximo: number) {
   if (valor === null) return 'url(#sem-observacao)';
-  const cores = ['#e6edff', '#b5c7ff', '#7998f5', '#466cdd', '#2543a4'];
-  return cores[maximo > 0 ? Math.min(4, Math.floor((valor / maximo) * 4)) : 0];
+  const faixa = maximo > 0 ? Math.min(4, Math.floor((valor / maximo) * 4)) : 0;
+  return `var(--map-${faixa})`;
 }

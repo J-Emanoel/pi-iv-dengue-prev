@@ -41,8 +41,8 @@ export function MapaMunicipios({
         >
           <defs>
             <pattern id="sem-observacao" patternUnits="userSpaceOnUse" width="6" height="6">
-              <rect width="6" height="6" fill="#f3f4f8" />
-              <path d="M0 6L6 0" stroke="#c2c7d4" strokeWidth="1" />
+              <rect width="6" height="6" className="map-hatch-bg" />
+              <path d="M0 6L6 0" className="map-hatch-line" strokeWidth="1" />
             </pattern>
           </defs>
           {municipiosNoMapa.map((m) => {
