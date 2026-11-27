@@ -1,13 +1,5 @@
 import { useState } from 'react';
-import {
-  Line,
-  LineChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from 'recharts';
+import { GraficoTemporal } from '../../components/GraficoTemporal';
 import { Painel } from '../../components/Painel';
 import { formatarData, formatarNumero, urlExternaSegura } from '../../lib/formatacao';
 import type { RegistroSemanal } from '../../types/api';
@@ -145,58 +137,26 @@ export function IndicadoresContexto({
                 o período ou ajuste a cobertura mínima.
               </p>
             )}
-            <div
-              className="chart-container climate-chart"
-              role="region"
-              aria-label={`Gráfico de ${config.nome.toLowerCase()}`}
-            >
-              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                <LineChart
-                  data={serie}
-                  margin={{ top: 15, right: 15, left: 0, bottom: 5 }}
-                  accessibilityLayer
-                >
-                  <CartesianGrid stroke="var(--line)" strokeDasharray="3 4" vertical={false} />
-                  <XAxis
-                    dataKey="semana"
-                    tickFormatter={(s: number) => `Sem. ${s}`}
-                    minTickGap={30}
-                    tick={{ fill: 'var(--muted)', fontSize: 13 }}
-                  />
-                  <YAxis
-                    width={55}
-                    tick={{ fill: 'var(--muted)', fontSize: 13 }}
-                    tickFormatter={(v: number) => formatarNumero(v, 1)}
-                  />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      const ponto = payload?.[0]?.payload as (typeof serie)[number] | undefined;
-                      return active && ponto ? (
-                        <div className="chart-tooltip">
-                          <strong>
-                            Semana {ponto.semana} · {formatarData(ponto.inicio, true)}–
-                            {formatarData(ponto.fim, true)}
-                          </strong>
-                          <p>
-                            {formatarNumero(ponto.valor, 1)} {config.unidade}
-                          </p>
-                          <small>Cobertura: {formatarNumero(ponto.cobertura, 1)}%</small>
-                        </div>
-                      ) : null;
-                    }}
-                  />
-                  <Line
-                    dataKey="valor"
-                    name={config.nome}
-                    stroke="var(--violet)"
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            <GraficoTemporal
+              rotulo={`Gráfico de ${config.nome.toLowerCase()}`}
+              classe="climate-chart"
+              casasDecimais={1}
+              pontos={serie.map((ponto) => ({
+                semana: ponto.semana,
+                inicio: ponto.inicio,
+                fim: ponto.fim,
+                valores: { valor: ponto.valor },
+                observacao: `Cobertura: ${formatarNumero(ponto.cobertura, 1)}%`,
+              }))}
+              series={[
+                {
+                  chave: 'valor',
+                  nome: config.nome,
+                  cor: 'var(--violet)',
+                  unidade: config.unidade,
+                },
+              ]}
+            />
             <p className="panel-footnote">
               {estacao?.nome_estacao || 'Estação não informada'}
               {estacao?.distancia_km != null

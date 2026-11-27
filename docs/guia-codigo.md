@@ -1,7 +1,7 @@
 # Guia dos fontes do DenguePrev
 
-Este relatório explica os arquivos mantidos no projeto após a organização de
-18/11/2026. O objetivo é permitir que cada integrante acompanhe o caminho dos
+Este relatório explica os arquivos mantidos no projeto, revisados em
+26/11/2026. O objetivo é permitir que cada integrante acompanhe o caminho dos
 dados e encontre o código responsável por cada tarefa. A visão geral e a
 arquitetura ficam no [README principal](../README.md); os comandos completos
 de instalação, preparação e execução estão no [guia de execução](execucao.md).
@@ -10,9 +10,9 @@ de instalação, preparação e execução estão no [guia de execução](execuc
 
 O projeto tem processamento de dados, PostgreSQL compartilhado no Supabase,
 API FastAPI, experimentos de Machine Learning e assistente com Groq, consultas
-controladas e recuperação de documentos. A visualização atual é um dashboard
-provisório em Streamlit. `frontend/` contém a interface inicial React/Vite e
-TypeScript, com panorama, estimativas e assistente conectados à API.
+controladas e recuperação de documentos. `frontend/` contém a interface
+React/Vite e TypeScript, com panorama, mapa, comparação municipal, clima,
+estimativas e assistente conectados à API.
 
 Há três fluxos principais:
 
@@ -55,14 +55,19 @@ gerado pelo Groq. O modelo de linguagem não treina o previsor epidemiológico.
 | `docs/` | Planejamento, avaliações, catálogos das fontes e este guia. |
 | `frontend/` | Interface React/Vite com componentes, páginas, contratos e acesso à API. |
 | `.vscode/` | Configuração de visualização do projeto no VS Code. |
-| `app.py` | Dashboard provisório em Streamlit. |
 | `README.md` | Apresentação do produto, arquitetura e início rápido. |
 | `requirements.txt` | Dependências Python da aplicação e dos testes. |
 | `.env.example` | Modelo fictício das configurações locais. |
 | `.gitignore` | Regras que mantêm credenciais, dados grandes e arquivos gerados fora dos commits. |
 
-O arquivo `ml/.gitkeep` é um marcador vazio mantido da estrutura inicial.
-O marcador de `frontend/` foi substituído pelos arquivos da interface.
+As pastas `ml/` e `frontend/` já contêm código fonte e não precisam de
+marcadores `.gitkeep` para permanecer no Git. O protótipo anterior em Streamlit
+foi retirado; a interface de uso é a aplicação React.
+
+Os arquivos de preparação não são descartáveis por ficarem fora do fluxo de
+uma consulta HTTP. ETL, inspeção e treinamento permitem reproduzir a base e os
+modelos. Já `__pycache__/`, `.pyc`, `frontend/dist/` e caches de ferramentas
+são gerados, podem ser recriados e ficam fora do versionamento.
 
 ## 3. Fontes de dados utilizadas
 
@@ -92,12 +97,13 @@ incompatibilidades antes da execução.
 | `index.html` e `src/main.tsx` | Documento inicial e montagem do React com o roteador. |
 | `src/App.tsx` | Rotas, filtros compartilhados no endereço e carregamento do cadastro municipal. As páginas são importadas sob demanda. |
 | `src/components/AppLayout.tsx` | Marca, navegação, localização da página e rodapé comuns. O acesso “Como usar” abre as instruções da página. |
-| `src/components/Filtros.tsx` | Seletores de município, ano e intervalo de semanas, escolha expansível da base e retorno à consulta estadual. Adapta os controles a cada página. |
+| `src/components/Filtros.tsx` | Filtros de ano, semanas e fonte. Exporta `SeletorMunicipio`, reutilizado nos filtros gerais e na comparação entre cidades, com rótulo e aviso de cadastro comuns. |
+| `src/components/GraficoTemporal.tsx` | Eixos, grade, legenda, linhas/área e tooltip compartilhados pelo histórico, clima e comparação. Recebe séries preparadas pelas páginas; não interpola lacunas nem calcula indicadores. |
 | `src/components/AjudaPagina.tsx` | Instruções expansíveis de uso, reutilizadas nas páginas. |
 | `src/components/CopiarConsulta.tsx` | Copia o endereço com filtros, informa sucesso e orienta a cópia manual quando o navegador não permite acesso à área de transferência. |
 | `src/components/Painel.tsx` | Cabeçalhos, cartões de indicadores e painéis reutilizáveis. |
 | `src/components/EstadoConsulta.tsx` | Estados de carregamento, erro, tentativa manual e ausência de dados. |
-| `src/hooks/useApi.ts` | Ciclo das leituras HTTP; cancela consultas antigas e evita mostrar dados de outro filtro. |
+| `src/hooks/useApi.ts` | Ciclo das leituras HTTP; cancela consultas antigas, impede dados de outro filtro e sinaliza espera prolongada após oito segundos. |
 | `src/services/api.ts` | Prefixo da API, requisições, erros, timeouts, caminhos das fontes e envio explícito de perguntas. |
 | `src/types/api.ts` | Contratos TypeScript consumidos da API, incluindo valores opcionais e ausência. A referência completa continua em `backend/schemas.py`. |
 | `src/features/panorama/PanoramaPage.tsx` | Consulta uma grade anual estadual e deriva as seleções locais de município/semana. Organiza Histórico, Mapa municipal e População e clima, exportação e atalhos. |
@@ -108,7 +114,7 @@ incompatibilidades antes da execução.
 | `src/features/comparacao/ComparacaoPage.tsx` | Duas cidades, período comum, totais/diferenças calculados pelo backend, gráfico de contagens ou taxas, tabela, inversão da referência e CSV. |
 | `src/features/estimativas/EstimativasPage.tsx` | Datas do snapshot e do alvo, avaliação do modelo, estimativas e motivos por município. Usa o ano epidemiológico retornado pela API. |
 | `src/features/assistente/AssistentePage.tsx` e `MensagemResposta.tsx` | Formulário com envio explícito, sugestões, biblioteca e apresentação das respostas e referências. |
-| `src/features/assistente/useConversa.ts` | Histórico em memória, município enviado como contexto, limite de texto, cancelamento e bloqueio de envios duplicados. Reinicia a conversa ao trocar fonte ou cidade. |
+| `src/features/assistente/useConversa.ts` | Histórico em memória, município enviado como contexto, cancelamento e bloqueio de envios duplicados. Respeita a espera informada em HTTP 429 sem reenviar a pergunta. |
 | `src/lib/formatacao.ts` e `csv.ts` | Formatação de números/datas, configuração das fontes, URLs permitidas e exportação de dados. |
 | `src/lib/filtros.ts` | Valida e restaura os filtros do endereço; serializa as consultas e aplica o calendário epidemiológico de 52 ou 53 semanas. |
 | `src/styles.css` | Paleta em variáveis CSS, tipografia, layouts, estados de foco e regras responsivas. Azul identifica navegação e consultas; violeta acompanha previsões e assistente. |
@@ -134,18 +140,6 @@ interação usam um DOM simulado com jsdom e Testing Library. A revisão visual
 foi bloqueada pelo controle de navegador disponível nesta máquina; o layout
 e a responsividade ainda precisam de conferência no navegador.
 
-### `app.py`
-
-É a interface provisória. `carregar_dados()` consulta `/casos` pela API;
-`filtrar_dados()` aplica os filtros de ano e município; `exibir_dashboard()`
-mostra indicadores, gráficos, tabela e exportação CSV. `main()` monta a página
-e apresenta erros de acesso.
-
-**Importância:** permite visualizar o histórico com a estrutura atual do
-backend. Esse dashboard consulta o SINAN; ainda não apresenta todos os recursos
-de previsões, assistente e RAG disponíveis na API. A interface React/Vite
-consulta esses recursos diretamente pelos serviços de `frontend/src/services/`.
-
 ### `backend/main.py`
 
 Cria a aplicação FastAPI, declara as rotas, recebe os filtros e encaminha as
@@ -165,8 +159,10 @@ interativa para explorar os parâmetros e testar as rotas.
 | `/assistente/status`, `POST /assistente` | Estado da configuração local e conversa com o assistente. |
 | `/documentos`, `/documentos/busca` | Catálogo documental e recuperação de trechos. |
 
-**Importância:** oferece um contrato único para o dashboard e para o futuro
-frontend. O código de processamento e treinamento fica nos serviços próprios.
+**Importância:** oferece um contrato único para a interface e as integrações.
+O código de processamento e treinamento fica nos serviços próprios. As rotas
+SINAN/SESA delegam os filtros e a paginação a `consulta_semanal()` e
+`consulta_cobertura()` em `analitica.py`, preservando os contratos de cada fonte.
 
 ### `backend/schemas.py`
 
@@ -179,6 +175,24 @@ o que a interface pode enviar ou receber. Esses contratos JSON têm uma função
 distinta das definições das tabelas SQL em `models.py`.
 
 ## 5. Conexão, estrutura e carga do banco
+
+### `backend/controle_uso.py`
+
+Confere a origem das chamadas ao chat público. `LimitesUso`
+lê as cotas do ambiente; `ControleUso.reservar()` admite uma tentativa e libera
+a reserva após o processamento. A tabela `ControleUsoAssistente`, definida em
+`models.py`, mantém os contadores e uma reserva temporária compartilhados pelo
+projeto. Não registra perguntas, respostas, códigos de acesso ou IPs.
+
+No PostgreSQL, o bloqueio da linha com `FOR UPDATE` serializa as admissões,
+inclusive entre processos. A transação termina antes de chamar o provedor.
+`preparar_controle()` cria somente essa tabela e habilita RLS no PostgreSQL;
+o backend utiliza o usuário proprietário. SQLite atende aos testes e ao uso
+local de um processo, com trava em memória para as transações locais.
+
+Os testes em `tests/test_controle_uso.py` cobrem acesso público, limites,
+persistência, concorrência, expiração da reserva, falhas e CORS. O preparo no
+Supabase e seu teste transacional estão registrados no contexto do projeto.
 
 ### `backend/database.py`
 
@@ -206,6 +220,7 @@ e restrições. É a referência da estrutura SQL usada pelas rotinas de carga.
 | `EstacaoMeteorologica` | `estacoes_inmet` | Cadastro e localização das estações. |
 | `ClimaSemanal` | `clima_semanal` | Medidas e cobertura de observações por estação e semana. |
 | `VinculoMunicipioEstacao` | `municipios_estacoes` | Estação associada ao município em cada ano, com distância e método. |
+| `ControleUsoAssistente` | `controle_uso_assistente` | Contadores globais e reserva temporária para limitar o consumo da IA; sem perguntas, IPs ou credenciais. |
 
 **Importância:** protege a integridade do banco. Por exemplo, o índice único
 dos agregados SINAN impede duas linhas para a mesma chave municipal/semanal.
@@ -543,7 +558,6 @@ ou atualizado. Para usar o que já foi preparado, iniciam-se a API e a interface
 | Busca documental | `docs/base-documental.json` válido e dependências instaladas. |
 | Assistente real | Configuração Groq válida; cada ferramenta depende dos dados que consulta. |
 | Interface React/Vite | Dependências npm instaladas e API acessível pelo proxy local ou pelo endereço configurado. |
-| Dashboard provisório | API acessível no endereço definido por `API_URL`. |
 
 O código, os testes, a documentação e os catálogos acompanham o Git. Os dados
 grandes têm distribuição separada pelo pacote de fontes e pela Release indicada
@@ -564,8 +578,9 @@ precisam acompanhar a apresentação dos resultados.
 1. Leia as seções 1–3 deste guia para situar as partes e as fontes.
 2. Abra `backend/models.py` e depois `backend/schemas.py`: veja como os dados
    são armazenados e como aparecem nas respostas da API.
-3. Acompanhe uma consulta simples em `backend/main.py`, como `/municipios` ou
-   `/casos`, e veja seu uso em `app.py`.
+3. Acompanhe `/municipios` em `backend/main.py`, a requisição em
+   `frontend/src/services/api.ts` e o cadastro consumido em `frontend/src/App.tsx`.
+   Depois siga `/base-analitica` até `PanoramaPage.tsx` para entender o histórico.
 4. Leia `etl_sinan.py`, `povoar_banco.py` e `analitica.py` para seguir uma
    contagem desde o ZIP até a visão integrada.
 5. Siga `ml/preparar_dados.py`, `ml/treinar.py` e `backend/previsoes.py` para

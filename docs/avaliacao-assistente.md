@@ -213,6 +213,14 @@ com as imagens temporárias após a conferência.
 
 ## Próximas verificações
 
+Em 26/11, a manutenção adicionou cota persistente ao chat público no backend,
+com testes específicos em `tests/test_controle_uso.py`. A suíte passou com 209
+testes Python e 109 subtestes; o frontend passou com 41 testes e compilação.
+Essas verificações usam provedor simulado e não ampliam a avaliação semântica
+real registrada acima. O teste transacional da cota no PostgreSQL foi revertido,
+preservando o saldo em zero. O teste do chat público com limites em produção
+depende da publicação do código. Os padrões das cotas podem ser ajustados no Render.
+
 1. Ampliar a avaliação de fidelidade, recusas e terminologia conforme novas funcionalidades forem integradas.
 2. Manter modelo, data e consumo identificados ao avaliar novas perguntas.
 3. Ampliar os testes do RAG, especialmente paráfrases e cobertura documental.

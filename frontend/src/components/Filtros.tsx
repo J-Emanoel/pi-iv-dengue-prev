@@ -21,6 +21,43 @@ const ORIENTACOES = {
   comparacao: 'As cidades são comparadas na mesma fonte e nas semanas observadas em comum.',
 };
 
+export function SeletorMunicipio({
+  id,
+  rotulo,
+  valor,
+  municipios,
+  selecionar,
+  permitirTodos = false,
+  cadastroIndisponivel = false,
+  classe = '',
+}: {
+  id: string;
+  rotulo: string;
+  valor: string;
+  municipios: Municipio[];
+  selecionar: (codigo: string) => void;
+  permitirTodos?: boolean;
+  cadastroIndisponivel?: boolean;
+  classe?: string;
+}) {
+  return (
+    <div className={`field ${classe}`}>
+      <label htmlFor={id}>{rotulo}</label>
+      <select id={id} value={valor} onChange={(evento) => selecionar(evento.target.value)}>
+        {permitirTodos && <option value="">Todos os municípios do Espírito Santo</option>}
+        {municipios.map((municipio) => (
+          <option key={municipio.codigo_ibge} value={municipio.codigo_ibge}>
+            {municipio.nome}
+          </option>
+        ))}
+      </select>
+      {cadastroIndisponivel && (
+        <small className="field-note">Não foi possível carregar a lista de municípios.</small>
+      )}
+    </div>
+  );
+}
+
 export function Filtros({
   filtros,
   atualizar,
@@ -79,30 +116,16 @@ export function Filtros({
         <legend className="sr-only">Selecione os dados da consulta</legend>
         <div className="filter-fields">
           {modo !== 'comparacao' && (
-            <div className="field municipality-field">
-              <label htmlFor={`${id}-municipio`}>
-                {modo === 'assistente' ? 'Município de referência (opcional)' : 'Município'}
-              </label>
-              <select
-                id={`${id}-municipio`}
-                value={filtros.codigoMunicipio}
-                onChange={(evento) =>
-                  atualizar({ ...filtros, codigoMunicipio: evento.target.value })
-                }
-              >
-                <option value="">Todos os municípios do Espírito Santo</option>
-                {municipios.map((municipio) => (
-                  <option key={municipio.codigo_ibge} value={municipio.codigo_ibge}>
-                    {municipio.nome}
-                  </option>
-                ))}
-              </select>
-              {cadastroIndisponivel && (
-                <small className="field-note">
-                  Não foi possível carregar a lista de municípios.
-                </small>
-              )}
-            </div>
+            <SeletorMunicipio
+              id={`${id}-municipio`}
+              rotulo={modo === 'assistente' ? 'Município de referência (opcional)' : 'Município'}
+              valor={filtros.codigoMunicipio}
+              municipios={municipios}
+              selecionar={(codigo) => atualizar({ ...filtros, codigoMunicipio: codigo })}
+              permitirTodos
+              cadastroIndisponivel={cadastroIndisponivel}
+              classe="municipality-field"
+            />
           )}
           {mostrarAno && (
             <div className="field year-field">

@@ -124,8 +124,9 @@ as consultas SESA anteriores. Detalhes em [avaliacao-sinan-2026.md](avaliacao-si
 - [x] Intervalo de semanas, seleção pelo mapa/ranking, busca, CSV e compartilhamento dos filtros pelo endereço.
 - [ ] Conferir visualmente a interface, a responsividade e a navegação com usuários.
 - [ ] Testar os fluxos completos entre interface, API, banco, ML e Groq, incluindo falhas e limites de uso.
-- [ ] Preparar hospedagem, artefatos ML, variáveis de ambiente e controle de consumo da IA para publicação.
-- [ ] Publicar o MVP e conferir o acesso e os fluxos no ambiente publicado.
+- [x] MVP publicado na Vercel/Render; cadastro, histórico, comparação, modelos, previsão SINAN e catálogo documental conferidos por HTTP.
+- [x] Preparar carregamento de até 90 segundos, cota persistente e CORS restrito no código local.
+- [ ] Publicar o chat público com limites de uso e conferir o fluxo completo em produção.
 - [ ] Consolidar documentação, reprodução do projeto, avaliações e limitações para a entrega final.
 
 ### O que já funciona
@@ -209,7 +210,9 @@ na carga. Não haverá troca das chaves atuais nesta primeira etapa.
 
 **Arquivos da entrega:** `pipelines/etl_ibge.py` e seu teste em
 `tests/test_etl_ibge.py`; alterações em `backend/povoar_banco.py`,
-`backend/main.py`, `backend/schemas.py`, `app.py`, testes existentes e README.
+`backend/main.py`, `backend/schemas.py`, o dashboard Streamlit da época,
+testes existentes e README. Essa etapa é histórica: o protótipo foi substituído
+pela interface React e retirado na organização de 26/11/2026.
 O campo `nome` já existe; essa entrega não exige alterar o esquema SQL.
 
 **Verificações de aceite:**
@@ -634,6 +637,62 @@ SINAN de Vitória e Vila Velha nas semanas 40–43 de 2026 confirmou quatro sema
 comuns, 123 e 210 registros e diferença de 87. Nenhuma escrita ou chamada Groq
 foi solicitada nesta conferência. A revisão visual em navegador permanece
 pendente: o serviço de acesso ao navegador estava indisponível nesta sessão.
+
+### Carregamento e proteção do assistente em 26/11/2026
+
+A publicação existente foi conferida: frontend e rota React responderam HTTP
+200; o bundle aponta para a API do Render. Cadastro (78 municípios), histórico,
+comparação (123 e 210 registros nas semanas 40–43), modelos SINAN/SESA,
+previsão SINAN, catálogo documental e configuração do assistente responderam
+200. O primeiro `/health` levou 57,4 segundos, acima dos 30 segundos que o
+frontend aguardava até então. Essa conferência usou apenas GET.
+
+O código local agora aguarda 90 segundos nas leituras e sinaliza espera longa
+após oito segundos. O POST permanece com prazo de 120 segundos e sem reenvio
+automático. O assistente permanece público, conforme a preferência do grupo:
+o código de acesso inicialmente proposto foi removido antes da publicação.
+
+`backend/controle_uso.py` confere a origem e mantém uma cota global no
+PostgreSQL: três perguntas por minuto e vinte por dia UTC por padrão, além de
+uma pergunta em processamento por vez. A tabela `controle_uso_assistente`
+guarda somente contadores e reserva temporária. Foi preparada no Supabase
+configurado localmente, com RLS. O teste PostgreSQL conferiu reserva, bloqueio
+e liberação em uma transação revertida; a cota permaneceu em zero.
+
+O campo de acesso e a variável temporária foram removidos. O chat abre
+diretamente e respeita `Retry-After` nos bloqueios.
+CORS aceita a origem Vercel e os dois endereços locais, configuráveis por ambiente.
+Passaram 209 testes Python, 109 subtestes, 41 testes frontend e a compilação.
+Os cenários de IA desta manutenção usaram provedor simulado, sem tokens Groq.
+
+Esta atualização ainda precisa ser publicada. Os limites já possuem padrões
+no código e podem ser ajustados no Render conforme `docs/execucao.md`. A avaliação real da
+IA em produção e a conferência visual permanecem pendentes.
+
+## Organização dos fontes — 26/11/2026
+
+O dashboard provisório Streamlit foi retirado porque a interface React já
+oferece os fluxos de consulta. Também saíram sua dependência Python,
+`API_URL` do exemplo de ambiente, estilos sem uso e o marcador vazio de `ml/`.
+Os dados e artefatos locais de execução foram preservados.
+
+Os gráficos de histórico, clima e comparação compartilham
+`frontend/src/components/GraficoTemporal.tsx`. As páginas preparam as séries;
+o componente apresenta valores e mantém as lacunas. O seletor municipal de
+`Filtros.tsx` também é usado na comparação. Os filtros das rotas analíticas
+foram centralizados em `backend/analitica.py`, preservando fonte, ordenação e
+paginação. O controle de uso compartilha a transação que bloqueia sua linha.
+
+Os scripts de inspeção, ETL, carga e treinamento permanecem necessários à
+reprodução do projeto. JSONs de fontes, corpus documental, malha municipal e
+configuração também permanecem. O guia dos fontes descreve essa organização.
+
+Validação local: 210 testes Python e 111 subtestes, 43 testes do frontend e
+compilação TypeScript/Vite aprovados. Os novos testes cobrem paginação nas
+duas fontes e a interrupção das curvas em dados ausentes. Os caches Python
+e a saída de compilação foram removidos após a validação; são recriáveis.
+Essa revisão não executou ETL, treinamento, alterações no banco ou chamadas
+reais ao Groq. A conferência visual no navegador permanece pendente.
 
 ## Acompanhar a implementação
 

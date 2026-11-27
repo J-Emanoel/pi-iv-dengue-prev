@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.analitica import (
-    ANOS, BASE_ANALITICA, BASE_SESA, NOME_VISAO, consulta_cobertura, gerar_calendario, preparar_base_analitica,
+    ANOS, BASE_ANALITICA, NOME_VISAO, consulta_cobertura, gerar_calendario, preparar_base_analitica,
 )
 from backend.database import Base, get_db
 from backend.main import app
@@ -347,6 +347,29 @@ class SesaDatabaseTests(unittest.TestCase):
         self.assertEqual(coverage["semanas_com_registros_sesa"], 2)
         self.assertEqual(coverage["semanas_com_fontes_e_cobertura"], 1)
         self.assertNotIn("semanas_com_registros_sinan", coverage)
+
+    def test_paginacao_das_duas_fontes_mantem_ordem_e_filtros(self):
+        self.carregar()
+        preparar_base_analitica(self.engine, fonte="sesa")
+        for rota in ("/base-analitica", "/base-sesa"):
+            with self.subTest(rota=rota):
+                url = f"{rota}?ano=2024&semana=1"
+                completa = self.client.get(url).json()
+                paginas = [
+                    self.client.get(f"{url}&limite=1&deslocamento={indice}").json()[0]
+                    for indice in range(len(completa))
+                ]
+                self.assertEqual(paginas, completa)
+                self.assertEqual(
+                    [linha["codigo_ibge"] for linha in completa],
+                    ["320500", "320520", "320530"],
+                )
+                filtrada = self.client.get(url + "&codigo_municipio=320530").json()
+                self.assertEqual(len(filtrada), 1)
+                self.assertEqual(filtrada[0], completa[-1])
+                self.assertEqual(
+                    self.client.get(f"{url}&limite=1&deslocamento=3").json(), [],
+                )
 
     def test_modulos_de_conferencia_estadual_nao_conectam(self):
         with patch("backend.povoar_banco.get_engine") as engine, patch(

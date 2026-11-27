@@ -9,13 +9,16 @@ dados, banco relacional, análise preditiva e consulta em linguagem natural.
 As análises preservam a origem dos dados, a referência temporal e as limitações
 de interpretação.
 
-## O que a aplicação oferece
 ## Acesso online
 
 - **Aplicação Web (Frontend):** https://pi-iv-dengue-prev.vercel.app
 - **API e Documentação interativa (Backend):** https://dengueprev-api.onrender.com/docs
 
-> **Nota:** A API está hospedada no plano gratuito do Render e entra em hibernação após 15 minutos sem uso. No primeiro acesso, o carregamento inicial pode levar cerca de 40 a 50 segundos enquanto o servidor é reativado.
+O primeiro acesso pode incluir a inicialização da API. A interface aguarda até
+90 segundos nas consultas de dados e informa quando a espera se prolonga.
+O assistente é público, com limites de uso persistentes no backend.
+
+## O que a aplicação oferece
 - **Histórico municipal:** consulta por município, ano e semana epidemiológica.
 - **Exploração territorial:** mapa dos 78 municípios e comparação entre duas
   cidades nas semanas com observações em comum.
@@ -65,7 +68,7 @@ os modelos e as fontes de dados em seus respectivos componentes.
 | Machine Learning | scikit-learn e Joblib · `ml/` e `backend/previsoes.py` | Compara estratégias com cortes temporais e disponibiliza estimativas reproduzíveis com métricas e elegibilidade. |
 | Assistente | Groq, HTTPX e function calling · `backend/assistente.py` e `ferramentas_ia.py` | Interpreta perguntas e explica resultados obtidos por operações de leitura previamente definidas. |
 | Recuperação documental | TF-IDF, scikit-learn e pypdf · `backend/rag.py` e `pipelines/preparar_rag.py` | Fundamenta respostas em trechos oficiais rastreáveis e fornece os dados para citações verificáveis. |
-| Visualização | React, TypeScript e Vite · `frontend/`; Streamlit provisório em `app.py` | Organiza navegação, filtros, histórico, estimativas e assistente. Node.js executa as ferramentas do frontend. |
+| Visualização | React, TypeScript e Vite · `frontend/` | Organiza navegação, filtros, histórico, estimativas e assistente. Node.js executa as ferramentas do frontend. |
 | Qualidade | Pytest, SQLite e provedores simulados · `tests/` | Verifica regras de processamento, integridade, contratos da API e controles da integração com IA. |
 
 A descrição de cada arquivo e suas funções está no
@@ -136,6 +139,7 @@ python -m venv .venv
 ```
 
 Configure seu `.env` local seguindo o [.env.example](.env.example).
+Para o chat, prepare o controle de uso conforme o [guia de execução](docs/execucao.md).
 As consultas ao banco exigem acesso ao PostgreSQL preparado; as previsões
 também dependem dos snapshots e modelos locais correspondentes. O assistente
 real utiliza a configuração Groq do backend.

@@ -5,19 +5,31 @@ export function EstadoConsulta({
   carregando,
   erro,
   recarregar,
+  demorado = false,
   children,
 }: {
   carregando: boolean;
   erro: string | null;
   recarregar: () => void;
+  demorado?: boolean;
   children: ReactNode;
 }) {
   if (carregando)
     return (
       <div className="loading-state" role="status">
         <span className="spinner" />
-        Consultando a fonte selecionada…
-        <div className="skeleton-row">
+        <p>
+          {demorado
+            ? 'O serviço pode estar iniciando. Continue aguardando…'
+            : 'Consultando a fonte selecionada…'}
+        </p>
+        {demorado && (
+          <p className="loading-detail">
+            O primeiro acesso pode levar cerca de um minuto. A consulta continua em andamento; não é
+            necessário recarregar a página.
+          </p>
+        )}
+        <div className="skeleton-row" aria-hidden="true">
           <i />
           <i />
           <i />

@@ -2,9 +2,80 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { caminhoHistorico, caminhoPrevisoes, perguntarAssistente, requisitar } from './api';
 import type { MensagemHistorico } from '../types/api';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe('contratos e envio de requisições', () => {
+  function simularPrazo() {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const controle = new AbortController();
+      setTimeout(() => controle.abort(new DOMException('prazo simulado', 'TimeoutError')), ms);
+      return controle.signal;
+    });
+  }
+
+  it('aguarda uma inicialização de 57 segundos sem repetir a consulta', async () => {
+    simularPrazo();
+    const fetchSimulado = vi.fn(
+      (_url, opcoes: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve(new Response(JSON.stringify({ status: 'ok' }))),
+            57_000,
+          );
+          opcoes.signal!.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(opcoes.signal!.reason);
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchSimulado);
+    const consulta = requisitar('/health');
+    await vi.advanceTimersByTimeAsync(57_000);
+    await expect(consulta).resolves.toEqual({ status: 'ok' });
+    expect(fetchSimulado).toHaveBeenCalledTimes(1);
+  });
+
+  it('encerra uma consulta que excede o prazo e preserva a tentativa manual', async () => {
+    simularPrazo();
+    const fetchSimulado = vi.fn(
+      (_url, opcoes: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          opcoes.signal!.addEventListener('abort', () => reject(opcoes.signal!.reason));
+        }),
+    );
+    vi.stubGlobal('fetch', fetchSimulado);
+    const resultado = expect(requisitar('/municipios')).rejects.toThrow(
+      'A consulta demorou mais que o esperado.',
+    );
+    await vi.advanceTimersByTimeAsync(90_000);
+    await resultado;
+    expect(fetchSimulado).toHaveBeenCalledTimes(1);
+  });
+
+  it('respeita Retry-After no chat público sem repetir o POST', async () => {
+    const fetchSimulado = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Limite do projeto atingido.' }), {
+        status: 429,
+        headers: { 'Retry-After': '30' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchSimulado);
+    await expect(
+      perguntarAssistente('Pergunta fictícia.', 'sinan', [], new AbortController().signal),
+    ).rejects.toMatchObject({ status: 429, retryAfterSeconds: 30 });
+    expect(fetchSimulado).toHaveBeenCalledTimes(1);
+    const [, opcoes] = fetchSimulado.mock.calls[0];
+    expect(JSON.parse(opcoes.body).pergunta).toBe('Pergunta fictícia.');
+    expect(opcoes.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+  });
   it('seleciona a rota da fonte e solicita a grade anual completa com os filtros', () => {
     expect(caminhoHistorico({ fonte: 'sinan', ano: 2026, codigoMunicipio: '' })).toBe(
       '/base-analitica?ano=2026&limite=5000',

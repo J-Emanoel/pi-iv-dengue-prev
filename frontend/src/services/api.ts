@@ -7,6 +7,7 @@ export class ErroApi extends Error {
   constructor(
     mensagem: string,
     readonly status?: number,
+    readonly retryAfterSeconds?: number,
   ) {
     super(mensagem);
     this.name = 'ErroApi';
@@ -28,7 +29,9 @@ function mensagemDaApi(dados: unknown): string | undefined {
 }
 
 export async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
-  const limite = AbortSignal.timeout(opcoes.method === 'POST' ? 120_000 : 30_000);
+  // O primeiro acesso ao serviço publicado pode incluir sua inicialização.
+  // Mantemos um prazo finito, sem repetir automaticamente leituras ou perguntas.
+  const limite = AbortSignal.timeout(opcoes.method === 'POST' ? 120_000 : 90_000);
   const signal = opcoes.signal ? AbortSignal.any([opcoes.signal, limite]) : limite;
   try {
     const resposta = await fetch(`${BASE_URL}${caminho}`, {
@@ -38,9 +41,13 @@ export async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): 
     });
     const dados: unknown = await resposta.json().catch(() => undefined);
     if (!resposta.ok) {
+      const espera = Number(resposta.headers.get('Retry-After'));
       throw new ErroApi(
         mensagemDaApi(dados) || 'Não foi possível concluir a consulta. Tente novamente.',
         resposta.status,
+        resposta.status === 429 && Number.isInteger(espera) && espera > 0 && espera <= 86_400
+          ? espera
+          : undefined,
       );
     }
     if (dados === undefined) throw new ErroApi('O serviço retornou uma resposta inválida.');
@@ -51,7 +58,7 @@ export async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): 
     if (limite.aborted)
       throw new ErroApi('A consulta demorou mais que o esperado. Tente novamente mais tarde.');
     throw new ErroApi(
-      'O serviço de dados está indisponível. Confira se a API está em execução e tente novamente.',
+      'O serviço de dados está indisponível. Aguarde um instante e tente novamente.',
     );
   }
 }

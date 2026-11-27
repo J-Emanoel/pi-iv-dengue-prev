@@ -18,12 +18,8 @@ export default function AssistentePage(props: PropriedadesFiltros) {
     codigoMunicipio;
   const configuracao = useApi<ConfiguracaoAssistente>('/assistente/status');
   const catalogo = useApi<CatalogoDocumental>('/documentos');
-  const conversa = useConversa(
-    fonte,
-    codigoMunicipio,
-    nomeMunicipio,
-    Boolean(configuracao.dados?.configuracao_local_completa),
-  );
+  const habilitado = Boolean(configuracao.dados?.configuracao_local_completa);
+  const conversa = useConversa(fonte, codigoMunicipio, nomeMunicipio, habilitado);
   const campo = useRef<HTMLTextAreaElement>(null);
   const ultimaResposta = useRef<HTMLDivElement>(null);
   const cidadeExemplo = nomeMunicipio || 'Vitória';
@@ -96,6 +92,13 @@ export default function AssistentePage(props: PropriedadesFiltros) {
               </p>
             </div>
           </div>
+          {configuracao.carregando && (
+            <p className="assistant-availability" role="status">
+              {configuracao.demorado
+                ? 'O serviço pode estar iniciando. A disponibilidade do assistente será confirmada em instantes.'
+                : 'Verificando disponibilidade do assistente…'}
+            </p>
+          )}
           {configuracao.erro && (
             <div className="inline-error" role="alert">
               <p>{configuracao.erro}</p>
@@ -143,7 +146,8 @@ export default function AssistentePage(props: PropriedadesFiltros) {
                 disabled={
                   !conversa.pergunta.trim() ||
                   conversa.enviando ||
-                  !configuracao.dados?.configuracao_local_completa
+                  !habilitado ||
+                  conversa.espera > 0
                 }
               >
                 {conversa.enviando ? (
@@ -151,11 +155,20 @@ export default function AssistentePage(props: PropriedadesFiltros) {
                     <span className="spinner" />
                     Buscando resposta…
                   </>
+                ) : conversa.espera > 0 ? (
+                  'Aguarde para enviar'
                 ) : (
                   'Enviar pergunta'
                 )}
               </button>
             </div>
+            {conversa.espera > 0 && (
+              <p className="field-help">
+                {conversa.espera > 60
+                  ? `Nova tentativa disponível em cerca de ${Math.ceil(conversa.espera / 60)} minuto(s).`
+                  : `Nova tentativa disponível em ${conversa.espera} segundo(s).`}
+              </p>
+            )}
             <p className="composer-note">
               Cada envio utiliza a cota de IA do projeto. As sugestões apenas preenchem o campo;
               você decide quando enviar.

@@ -9,9 +9,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
-from backend.analitica import BASE_ANALITICA, BASE_SESA, consulta_cobertura
+from backend.analitica import consulta_cobertura, consulta_semanal
 from backend.assistente import ErroAssistente, conversar, get_cliente_groq, status_configuracao
 from backend.database import DatabaseConfigurationError, get_db
+from backend.controle_uso import ErroControleUso, get_controle_uso, origens_permitidas, validar_origem
 from backend.models import (
     CasoDengue, ClimaSemanal, EstacaoMeteorologica, Municipio, PopulacaoMunicipal, VinculoMunicipioEstacao,
 )
@@ -29,8 +30,15 @@ from backend.schemas import (
 )
 
 from fastapi.middleware.cors import CORSMiddleware
-app = FastAPI(title="API DenguePrev - ES", version="0.12.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="API DenguePrev - ES", version="0.13.0")
+app.add_middleware(CORSMiddleware, allow_origins=list(origens_permitidas()), allow_credentials=False,
+    allow_methods=["GET", "POST"], allow_headers=["Content-Type"], expose_headers=["Retry-After"])
+
+
+@app.exception_handler(ErroControleUso)
+def usage_error(request, exc):
+    headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)}, headers=headers)
 
 
 @app.exception_handler(BaseDocumentalIndisponivelError)
@@ -167,15 +175,11 @@ def listar_base_analitica(
     db: Session = Depends(get_db),
 ):
     """Calendário completo, registros da extração, população e clima. Ausência permanece nula."""
-    tabela = BASE_ANALITICA
-    query = tabela.select()
-    if ano is not None:
-        query = query.where(tabela.c.ano == ano)
-    if codigo_municipio is not None:
-        query = query.where(tabela.c.codigo_ibge == codigo_municipio)
-    if semana is not None:
-        query = query.where(tabela.c.semana_epidemiologica == semana)
-    return db.execute(query.order_by(tabela.c.data_inicio, tabela.c.codigo_ibge).limit(limite).offset(deslocamento)).mappings().all()
+    consulta = consulta_semanal(
+        fonte="sinan", ano=ano, codigo_municipio=codigo_municipio,
+        semana=semana, limite=limite, deslocamento=deslocamento,
+    )
+    return db.execute(consulta).mappings().all()
 
 
 @app.get("/cobertura", response_model=list[CoberturaResponse])
@@ -186,13 +190,10 @@ def listar_cobertura(
     db: Session = Depends(get_db),
 ):
     """Presença por município/ano. O limiar climático é exploratório; não valida cobertura epidemiológica nem aptidão para ML."""
-    tabela = BASE_ANALITICA.c
-    query = consulta_cobertura(cobertura_minima_clima_pct)
-    if ano is not None:
-        query = query.where(tabela.ano == ano)
-    if codigo_municipio is not None:
-        query = query.where(tabela.codigo_ibge == codigo_municipio)
-    return db.execute(query.order_by(tabela.ano, tabela.codigo_ibge)).mappings().all()
+    consulta = consulta_cobertura(
+        cobertura_minima_clima_pct, fonte="sinan", ano=ano, codigo_municipio=codigo_municipio,
+    )
+    return db.execute(consulta).mappings().all()
 
 
 @app.get("/base-sesa", response_model=list[BaseSesaResponse])
@@ -205,15 +206,11 @@ def listar_base_sesa(
     db: Session = Depends(get_db),
 ):
     """SESA por semana de notificação com população e clima; fonte adotada para o ML retrospectivo."""
-    tabela = BASE_SESA
-    query = tabela.select()
-    if ano is not None:
-        query = query.where(tabela.c.ano == ano)
-    if codigo_municipio is not None:
-        query = query.where(tabela.c.codigo_ibge == codigo_municipio)
-    if semana is not None:
-        query = query.where(tabela.c.semana_epidemiologica == semana)
-    return db.execute(query.order_by(tabela.c.data_inicio, tabela.c.codigo_ibge).limit(limite).offset(deslocamento)).mappings().all()
+    consulta = consulta_semanal(
+        fonte="sesa", ano=ano, codigo_municipio=codigo_municipio,
+        semana=semana, limite=limite, deslocamento=deslocamento,
+    )
+    return db.execute(consulta).mappings().all()
 
 
 @app.get("/cobertura-sesa", response_model=list[CoberturaSesaResponse])
@@ -224,13 +221,10 @@ def listar_cobertura_sesa(
     db: Session = Depends(get_db),
 ):
     """Presença de registros estaduais e qualidade horária; não mede a proporção de casos reais capturados."""
-    tabela = BASE_SESA.c
-    query = consulta_cobertura(cobertura_minima_clima_pct, fonte="sesa")
-    if ano is not None:
-        query = query.where(tabela.ano == ano)
-    if codigo_municipio is not None:
-        query = query.where(tabela.codigo_ibge == codigo_municipio)
-    return db.execute(query.order_by(tabela.ano, tabela.codigo_ibge)).mappings().all()
+    consulta = consulta_cobertura(
+        cobertura_minima_clima_pct, fonte="sesa", ano=ano, codigo_municipio=codigo_municipio,
+    )
+    return db.execute(consulta).mappings().all()
 
 
 @app.get("/modelo", response_model=ModeloPrevisaoResponse, tags=["Previsões"])
@@ -281,11 +275,14 @@ def consultar_configuracao_assistente():
 @app.post("/assistente", response_model=AssistenteResponse, tags=["Assistente"])
 def perguntar_assistente(
     pedido: AssistenteRequest,
+    origem=Depends(validar_origem),
+    controle=Depends(get_controle_uso),
     cliente=Depends(get_cliente_groq),
     ferramentas=Depends(get_ferramentas_ia),
 ):
     """LLM via Groq consulta agregados e documentos oficiais pelas funções permitidas."""
-    return conversar(pedido, cliente, ferramentas)
+    with controle.reservar():
+        return conversar(pedido, cliente, ferramentas)
 
 
 @app.get("/documentos", response_model=CatalogoDocumentalResponse, tags=["Documentos"])

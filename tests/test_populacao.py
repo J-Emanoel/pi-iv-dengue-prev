@@ -3,7 +3,6 @@ import io
 import tempfile
 import unittest
 import zipfile
-from datetime import date
 from pathlib import Path
 from unittest.mock import Mock, patch
 from xml.etree.ElementTree import Element, SubElement, tostring

@@ -113,6 +113,37 @@ BASE_SESA = Table(
 )
 
 
+def tabela_analitica(fonte):
+    """Seleciona uma visão sem misturar registros de fontes diferentes."""
+    tabelas = {"sinan": BASE_ANALITICA, "sesa": BASE_SESA}
+    if fonte not in tabelas:
+        raise ValueError("Fonte analítica desconhecida.")
+    return tabelas[fonte]
+
+
+def _filtrar_recorte(consulta, tabela, ano, codigo_municipio):
+    if ano is not None:
+        consulta = consulta.where(tabela.c.ano == ano)
+    if codigo_municipio is not None:
+        consulta = consulta.where(tabela.c.codigo_ibge == codigo_municipio)
+    return consulta
+
+
+def consulta_semanal(
+    *, fonte="sinan", ano=None, codigo_municipio=None,
+    semana=None, limite=500, deslocamento=0,
+):
+    """Histórico paginado e ordenado, com os mesmos filtros nas duas fontes."""
+    tabela = tabela_analitica(fonte)
+    consulta = _filtrar_recorte(tabela.select(), tabela, ano, codigo_municipio)
+    if semana is not None:
+        consulta = consulta.where(tabela.c.semana_epidemiologica == semana)
+    return (
+        consulta.order_by(tabela.c.data_inicio, tabela.c.codigo_ibge)
+        .limit(limite).offset(deslocamento)
+    )
+
+
 def preparar_base_analitica(engine, *, fonte="sinan"):
     """Acrescenta o calendário e cria a visão sem modificar os dados das fontes."""
     calendario = SemanaEpidemiologica.__table__
@@ -181,11 +212,12 @@ def preparar_base_analitica(engine, *, fonte="sinan"):
                 linhas=total, **{f"linhas_{fonte}": presentes}, registros_notificados=notificacoes)
 
 
-def consulta_cobertura(cobertura_minima_clima_pct=80.0, *, fonte="sinan"):
+def consulta_cobertura(
+    cobertura_minima_clima_pct=80.0, *, fonte="sinan", ano=None, codigo_municipio=None,
+):
     """Diagnóstico de presença; percentual de semanas não mede completude epidemiológica."""
-    if fonte not in ("sinan", "sesa"):
-        raise ValueError("Fonte de cobertura desconhecida.")
-    b = (BASE_ANALITICA if fonte == "sinan" else BASE_SESA).c
+    tabela = tabela_analitica(fonte)
+    b = tabela.c
     presenca = b[f"registro_{fonte}_presente"]
     parcial = b[f"ano_fonte_{fonte}_parcial"]
     def contar(condicao):
@@ -196,7 +228,7 @@ def consulta_cobertura(cobertura_minima_clima_pct=80.0, *, fonte="sinan"):
         b.cobertura_temperatura_pct >= cobertura_minima_clima_pct,
         b.cobertura_umidade_pct >= cobertura_minima_clima_pct,
     )
-    return select(
+    consulta = select(
         b.codigo_ibge, b.nome_municipio, b.ano, parcial,
         b.cobertura_epidemiologica_validada, b.representatividade_climatica_validada,
         func.count().label("semanas_calendario"),
@@ -210,7 +242,8 @@ def consulta_cobertura(cobertura_minima_clima_pct=80.0, *, fonte="sinan"):
         contar(sensores).label("semanas_clima_cobertura_suficiente"),
         contar(and_(sensores, presenca, b.populacao.is_not(None))).label("semanas_com_fontes_e_cobertura"),
         literal(float(cobertura_minima_clima_pct)).label("cobertura_minima_clima_pct"),
-    ).select_from(BASE_ANALITICA if fonte == "sinan" else BASE_SESA).group_by(
+    ).select_from(tabela).group_by(
         b.codigo_ibge, b.nome_municipio, b.ano, parcial,
         b.cobertura_epidemiologica_validada, b.representatividade_climatica_validada,
     )
+    return _filtrar_recorte(consulta, tabela, ano, codigo_municipio).order_by(b.ano, b.codigo_ibge)

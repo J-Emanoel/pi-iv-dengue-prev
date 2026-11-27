@@ -1,13 +1,25 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FiltrosDados, RespostaAssistente } from '../../types/api';
 import AssistentePage from './AssistentePage';
-import { limiteDaPergunta, perguntaComMunicipio } from './useConversa';
+import { limiteDaPergunta, perguntaComMunicipio, useConversa } from './useConversa';
+import { ErroApi } from '../../services/api';
 
 const api = vi.hoisted(() => ({ requisitar: vi.fn(), perguntarAssistente: vi.fn() }));
-vi.mock('../../services/api', () => api);
+vi.mock('../../services/api', async (original) => ({
+  ...(await original<typeof import('../../services/api')>()),
+  ...api,
+}));
 
 const municipios = [
   { codigo_ibge: '320530', nome: 'Vitória', populacao: null },
@@ -55,9 +67,43 @@ beforeEach(() => {
   });
   api.perguntarAssistente.mockResolvedValue(resposta);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('conversa do assistente, sem chamadas externas', () => {
+  it('envia a pergunta pelo formulário público sem etapa de acesso', async () => {
+    render(<PaginaDeTeste />);
+    await escreverEEnviar('Pergunta fictícia.');
+    await screen.findByText(resposta.resposta);
+    expect(api.perguntarAssistente).toHaveBeenCalledTimes(1);
+    expect(api.perguntarAssistente.mock.calls[0]).toHaveLength(4);
+  });
+
+  it('aguarda o prazo do servidor sem repetir a pergunta automaticamente', async () => {
+    vi.useFakeTimers();
+    api.perguntarAssistente.mockRejectedValueOnce(new ErroApi('Limite atingido.', 429, 2));
+    const { result } = renderHook(() => useConversa('sinan', '', '', true));
+    act(() => result.current.setPergunta('Pergunta fictícia.'));
+    await act(async () => {
+      await result.current.enviar();
+    });
+    expect(result.current.espera).toBe(2);
+    await act(async () => {
+      await result.current.enviar();
+    });
+    expect(api.perguntarAssistente).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.espera).toBe(0);
+    expect(result.current.pergunta).toBe('Pergunta fictícia.');
+    expect(api.perguntarAssistente).toHaveBeenCalledTimes(1);
+  });
   it('preenche a sugestão sem gastar uma chamada e inclui a cidade somente no envio explícito', async () => {
     render(<PaginaDeTeste />);
     fireEvent.click(screen.getByRole('button', { name: /Consultar uma previsão/ }));

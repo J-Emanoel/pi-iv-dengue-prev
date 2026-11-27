@@ -1,19 +1,10 @@
 import { useState } from 'react';
 import { Download, ArrowLeftRight } from 'lucide-react';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { GraficoTemporal } from '../../components/GraficoTemporal';
 import { AjudaPagina } from '../../components/AjudaPagina';
 import { CopiarConsulta } from '../../components/CopiarConsulta';
 import { EstadoConsulta } from '../../components/EstadoConsulta';
-import { Filtros } from '../../components/Filtros';
+import { Filtros, SeletorMunicipio } from '../../components/Filtros';
 import type { PropriedadesFiltros } from '../../components/Filtros';
 import { CabecalhoPagina, Painel } from '../../components/Painel';
 import { useApi } from '../../hooks/useApi';
@@ -39,10 +30,14 @@ export default function ComparacaoPage(props: PropriedadesFiltros) {
   const serie =
     dados?.municipios[0]?.semanas.map((s) => ({
       semana: s.semana_epidemiologica,
-      a: comuns.has(s.semana_epidemiologica) ? s[medida] : null,
-      b: comuns.has(s.semana_epidemiologica)
-        ? (porSemana.get(s.semana_epidemiologica)?.[medida] ?? null)
-        : null,
+      inicio: s.data_inicio,
+      fim: s.data_fim,
+      valores: {
+        a: comuns.has(s.semana_epidemiologica) ? s[medida] : null,
+        b: comuns.has(s.semana_epidemiologica)
+          ? (porSemana.get(s.semana_epidemiologica)?.[medida] ?? null)
+          : null,
+      },
     })) ?? [];
   return (
     <>
@@ -54,20 +49,14 @@ export default function ComparacaoPage(props: PropriedadesFiltros) {
       />
       <Filtros {...props} modo="comparacao" />
       <section className="comparison-picker panel" aria-label="Municípios para comparar">
-        <div className="field">
-          <label htmlFor="cidade-a">Primeiro município</label>
-          <select
-            id="cidade-a"
-            value={primeiro}
-            onChange={(e) => atualizar({ ...filtros, codigoMunicipio: e.target.value })}
-          >
-            {props.municipios.map((m) => (
-              <option key={m.codigo_ibge} value={m.codigo_ibge}>
-                {m.nome}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SeletorMunicipio
+          id="cidade-a"
+          rotulo="Primeiro município"
+          valor={primeiro}
+          municipios={props.municipios}
+          selecionar={(codigo) => atualizar({ ...filtros, codigoMunicipio: codigo })}
+          cadastroIndisponivel={props.cadastroIndisponivel}
+        />
         <button
           className="button secondary swap-cities"
           onClick={() => atualizar({ ...filtros, codigoMunicipio: segundo, compararCom: primeiro })}
@@ -75,20 +64,14 @@ export default function ComparacaoPage(props: PropriedadesFiltros) {
           <ArrowLeftRight size={18} aria-hidden="true" />
           Inverter cidades
         </button>
-        <div className="field">
-          <label htmlFor="cidade-b">Segundo município</label>
-          <select
-            id="cidade-b"
-            value={segundo}
-            onChange={(e) => atualizar({ ...filtros, compararCom: e.target.value })}
-          >
-            {props.municipios.map((m) => (
-              <option key={m.codigo_ibge} value={m.codigo_ibge}>
-                {m.nome}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SeletorMunicipio
+          id="cidade-b"
+          rotulo="Segundo município"
+          valor={segundo}
+          municipios={props.municipios}
+          selecionar={(codigo) => atualizar({ ...filtros, compararCom: codigo })}
+          cadastroIndisponivel={props.cadastroIndisponivel}
+        />
       </section>
       {!distintos && (
         <p className="inline-error" role="alert">
@@ -168,60 +151,24 @@ export default function ComparacaoPage(props: PropriedadesFiltros) {
                     Por 100 mil habitantes
                   </button>
                 </div>
-                <div
-                  className="chart-container"
-                  role="region"
-                  aria-label="Gráfico comparativo municipal"
-                >
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <LineChart
-                      data={serie}
-                      margin={{ top: 20, right: 20, left: 0, bottom: 10 }}
-                      accessibilityLayer
-                    >
-                      <CartesianGrid stroke="var(--line)" vertical={false} />
-                      <XAxis
-                        dataKey="semana"
-                        minTickGap={30}
-                        tickFormatter={(s: number) => `Sem. ${s}`}
-                        tick={{ fill: 'var(--muted)', fontSize: 13 }}
-                      />
-                      <YAxis
-                        width={65}
-                        tickFormatter={(v: number) =>
-                          formatarNumero(v, medida === 'registros_por_100_mil' ? 1 : 0)
-                        }
-                        tick={{ fill: 'var(--muted)', fontSize: 13 }}
-                      />
-                      <Tooltip
-                        labelFormatter={(s) => `Semana ${s}`}
-                        formatter={(v) => formatarNumero(typeof v === 'number' ? v : null, 2)}
-                      />
-                      <Legend />
-                      <Line
-                        type="linear"
-                        dataKey="a"
-                        name={dados.municipios[0]?.nome_municipio}
-                        stroke="var(--chart)"
-                        strokeWidth={2.5}
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        type="linear"
-                        dataKey="b"
-                        name={dados.municipios[1]?.nome_municipio}
-                        stroke="var(--violet)"
-                        strokeDasharray="6 3"
-                        strokeWidth={2.5}
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <GraficoTemporal
+                  rotulo="Gráfico comparativo municipal"
+                  pontos={serie}
+                  casasDecimais={medida === 'registros_por_100_mil' ? 2 : 0}
+                  series={[
+                    {
+                      chave: 'a',
+                      nome: dados.municipios[0]?.nome_municipio ?? 'Primeiro município',
+                      cor: 'var(--chart)',
+                    },
+                    {
+                      chave: 'b',
+                      nome: dados.municipios[1]?.nome_municipio ?? 'Segundo município',
+                      cor: 'var(--violet)',
+                      tracejada: true,
+                    },
+                  ]}
+                />
                 <details className="consultation-details">
                   <summary>Ver valores semanais em tabela</summary>
                   <div className="table-scroll">
@@ -244,8 +191,8 @@ export default function ComparacaoPage(props: PropriedadesFiltros) {
                         {serie.map((s) => (
                           <tr key={s.semana}>
                             <td>{s.semana}</td>
-                            <td>{formatarNumero(s.a, 2)}</td>
-                            <td>{formatarNumero(s.b, 2)}</td>
+                            <td>{formatarNumero(s.valores.a, 2)}</td>
+                            <td>{formatarNumero(s.valores.b, 2)}</td>
                             <td>{comuns.has(s.semana) ? 'Sim' : 'Sem observação em comum'}</td>
                           </tr>
                         ))}

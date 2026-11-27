@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import sklearn
 
-from ml.preparar_dados import FEATURES, FEATURES_NUMERICAS, construir_variaveis, resumir_exemplos, validar_base
+from ml.preparar_dados import FEATURES, construir_variaveis, resumir_exemplos, validar_base
 from ml.treinar import carregar_dataset, carregar_modelo, executar_experimento, metricas, prever, separar_particoes
 from pipelines.arquivos import sha256_arquivo
 from pipelines.calendario import ano_semana_epidemiologica

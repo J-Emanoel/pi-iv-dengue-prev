@@ -16,6 +16,21 @@ class Municipio(Base):
     casos = relationship("CasoDengue", back_populates="municipio")
 
 
+class ControleUsoAssistente(Base):
+    """Cota compartilhada do projeto; não guarda perguntas, códigos de acesso nem IPs."""
+    __tablename__ = "controle_uso_assistente"
+    __table_args__ = (
+        CheckConstraint("pedidos_minuto >= 0 AND pedidos_dia >= 0", name="ck_uso_assistente_contadores"),
+    )
+    chave = Column(String(20), primary_key=True)
+    minuto = Column(DateTime(timezone=True), nullable=False)
+    dia = Column(Date, nullable=False)
+    pedidos_minuto = Column(Integer, nullable=False, default=0)
+    pedidos_dia = Column(Integer, nullable=False, default=0)
+    reserva_id = Column(String(32), nullable=True)
+    reserva_ate = Column(DateTime(timezone=True), nullable=True)
+
+
 class CasoDengue(Base):
     __tablename__ = "casos_dengue"
     __table_args__ = (

@@ -102,10 +102,6 @@ h3 {
 .field-help {
   color: var(--muted);
 }
-.full-width {
-  width: 100%;
-  margin-top: 1.2rem;
-}
 
 /* Estrutura comum: navegação clara e área de trabalho neutra. */
 .app-shell {
@@ -600,10 +596,6 @@ h1 {
   font-weight: 600;
   color: #3e475e;
 }
-.context-separator {
-  color: #929bb1;
-  font-weight: 400;
-}
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1014,6 +1006,17 @@ tbody tr:hover {
   color: #4d5e8c;
   text-align: center;
 }
+.loading-detail {
+  max-width: 650px;
+  margin: 0.8rem auto 0;
+  color: var(--muted);
+  font-size: 1rem;
+}
+.assistant-availability {
+  margin: 1.4rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
 .spinner {
   display: inline-block;
   width: 18px;
@@ -1102,6 +1105,7 @@ tbody tr:hover {
   border-radius: 8px;
   color: var(--violet);
 }
+
 .chat-form {
   margin: 1.4rem;
 }

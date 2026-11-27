@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { perguntarAssistente } from '../../services/api';
+import { ErroApi, perguntarAssistente } from '../../services/api';
 import type { Fonte, MensagemHistorico, RespostaAssistente } from '../../types/api';
 
 const LIMITE_API = 2000;
@@ -34,6 +34,7 @@ export function useConversa(
   const [pergunta, setPergunta] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [espera, setEspera] = useState(0);
   const controle = useRef<AbortController | null>(null);
 
   function limparConversa() {
@@ -50,9 +51,15 @@ export function useConversa(
     return () => controle.current?.abort();
   }, [fonte, codigoMunicipio]);
 
+  useEffect(() => {
+    if (!espera) return;
+    const timer = setTimeout(() => setEspera((valor) => Math.max(0, valor - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [espera]);
+
   async function enviar() {
     const texto = pergunta.trim();
-    if (!texto || controle.current || !habilitado) return;
+    if (!texto || controle.current || !habilitado || espera > 0) return;
     const perguntaEnviada = perguntaComMunicipio(texto, nomeMunicipio);
     if (perguntaEnviada.length > LIMITE_API) {
       setErro('Sua pergunta ficou muito longa. Reduza um pouco o texto antes de enviar.');
@@ -80,6 +87,8 @@ export function useConversa(
       ]);
       setPergunta('');
     } catch (falha) {
+      if (!requisicao.signal.aborted && falha instanceof ErroApi && falha.retryAfterSeconds)
+        setEspera(falha.retryAfterSeconds);
       if (!requisicao.signal.aborted)
         setErro(falha instanceof Error ? falha.message : 'Não foi possível obter a resposta.');
     } finally {
@@ -96,6 +105,7 @@ export function useConversa(
     setPergunta,
     enviando,
     erro,
+    espera,
     enviar,
     limparConversa,
     limite: limiteDaPergunta(nomeMunicipio),

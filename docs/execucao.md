@@ -32,8 +32,9 @@ A mesma configuração permite apontar para um PostgreSQL local.
 Caracteres especiais da senha precisam ser codificados na URL.
 Variáveis do ambiente têm prioridade; o `.env` da raiz precede o antigo
 `backend/.env`, que continua aceito por compatibilidade.
-`API_URL` configura o endereço usado pelo dashboard, com padrão
-`http://127.0.0.1:8000`.
+O endereço público da API para a interface é configurado em
+`frontend/.env`, conforme `frontend/.env.example`. No desenvolvimento local,
+o proxy do Vite encaminha `/api` para o backend.
 
 ## Compartilhar os arquivos brutos
 
@@ -463,21 +464,58 @@ npm.cmd --prefix frontend run format
 separadamente para reduzir o código inicial. `format` padroniza o código com
 Prettier. Os testes usam respostas simuladas, sem consumir a cota Groq.
 
-O proxy configurado é de desenvolvimento. Para publicar o bundle estático,
-será necessário servir as rotas da interface com fallback para `index.html`
-e encaminhar `/api` ao FastAPI no mesmo domínio, ou configurar explicitamente
-as origens permitidas no backend. Publicação e controle de acesso/consumo do
-assistente permanecem etapas próprias; o servidor local escuta em loopback.
+O proxy configurado é de desenvolvimento. Na Vercel, `frontend/vercel.json`
+serve as rotas React com fallback para `index.html`; configure
+`VITE_API_BASE_URL=https://dengueprev-api.onrender.com` no build publicado.
+As origens permitidas da API são explícitas em `CORS_ORIGINS`. O servidor de
+desenvolvimento escuta em loopback.
 
-### Dashboard provisório Streamlit
+As consultas GET possuem prazo de 90 segundos para acomodar o primeiro acesso
+ao serviço; o chat mantém prazo de 120 segundos. Após oito segundos, a interface
+explica que o serviço pode estar iniciando. Não há reenvio automático. Um HTTP
+429 com `Retry-After` bloqueia temporariamente o botão de envio, preservando a
+pergunta para nova tentativa manual.
 
-O dashboard anterior continua disponível. Em outro terminal na raiz:
+### Uso público e cota do assistente
+
+O chat é público e pode ser usado diretamente pelo formulário. As tentativas
+admitidas compartilham uma cota persistente no backend. A chave `GROQ_API_KEY`
+fica somente no servidor; não crie variáveis `VITE_*` para credenciais.
+
+O código já possui os seguintes padrões, ajustáveis no backend/Render:
+
+| Variável | Padrão |
+| --- | --- |
+| `ASSISTENTE_LIMITE_MINUTO` | `3` perguntas por janela de minuto UTC, para todo o projeto. |
+| `ASSISTENTE_LIMITE_DIA` | `20` perguntas por dia UTC, para todo o projeto. |
+| `CORS_ORIGINS` | Vercel e os endereços locais definidos em `.env.example`. |
+
+CORS regula origens dos navegadores. Chamadas diretas à API também utilizam
+a mesma cota, inclusive sem cabeçalho `Origin`. Sem armazenamento da cota
+disponível, o chat recusa o envio.
+
+Prepare o armazenamento usando a mesma conexão/usuário do backend:
 
 ```powershell
-.venv\Scripts\python.exe -m streamlit run app.py
+.venv\Scripts\python.exe -B -m backend.controle_uso --preparar
 ```
 
-O dashboard consulta a API e renova o cache a cada 60 segundos.
+O comando cria apenas `controle_uso_assistente` e sua linha de controle, sem
+zerar uma cota existente. Habilita RLS no PostgreSQL; o usuário proprietário
+que prepara a tabela atende o backend. No Supabase configurado nesta máquina,
+o preparo já foi executado. Se o Render utilizar outro banco, execute o preparo
+nesse destino antes de ativar esta versão do chat.
+
+Há uma pergunta em processamento por vez para todo o projeto. Tentativas
+admitidas contam mesmo quando a LLM falha, porque o provedor pode ter consumido
+tokens. Corpo inválido e limites recusados não consomem essa cota. Uma reserva
+abandonada após falha do processo expira em dez minutos. Desenvolvimento e
+produção compartilham a cota quando usam o mesmo banco.
+
+Os limites medem perguntas admitidas, não o saldo exato de tokens da conta
+Groq; continue acompanhando o painel de uso do provedor. Depois de publicar,
+confira o formulário público, os bloqueios de uso e as consultas de dados.
+A avaliação de uma resposta real da IA é uma etapa separada, com consumo controlado.
 
 ## Comparar fontes antes do ML
 
@@ -721,6 +759,9 @@ permissão, disponibilidade ou qualidade das respostas. Sem configuração,
 
 Em `http://127.0.0.1:8000/docs`, teste `POST /assistente` com:
 
+Cada execução admitida conta na cota compartilhada e uma chamada real pode
+consumir tokens.
+
 ```json
 {
   "pergunta": "Qual a estratégia do modelo SINAN e até quando vão os dados?",
@@ -774,10 +815,10 @@ consultar funções e responder por esse protocolo de recusa.
 
 O cliente usa HTTPX, já presente nas dependências, conforme o [protocolo oficial
 de tool calling](https://console.groq.com/docs/tool-use/local-tool-calling).
-A recuperação documental está descrita abaixo. A interface React/Vite inicial
-integra o assistente; a conferência visual e os testes completos de uso permanecem pendentes.
-Antes de publicar a rota, será necessário definir controle de acesso e limites
-de uso do provedor; nesta etapa o uso é local.
+A recuperação documental está descrita abaixo. A interface React/Vite integra
+o assistente público. A conferência visual e os testes completos de
+uso permanecem pendentes. A versão protegida depende da configuração descrita
+em “Uso público e cota do assistente” e de sua publicação no Render/Vercel.
 
 ## RAG com documentos oficiais
 

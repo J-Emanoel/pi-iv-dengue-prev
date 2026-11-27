@@ -16,5 +16,6 @@
     "arquivos-proj-int-iv.zip": true,
     "DENGBR26.csv.zip": true,
     "2026.zip": true
-  }
+  },
+  "python.terminal.useEnvFile": true
 }

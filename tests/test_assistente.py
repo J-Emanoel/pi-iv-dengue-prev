@@ -1,6 +1,8 @@
 import copy
 import json
 import unittest
+from contextlib import nullcontext
+from types import SimpleNamespace
 from datetime import date
 from unittest.mock import patch
 
@@ -16,6 +18,7 @@ from backend.assistente import (
 )
 from backend.ferramentas_ia import FerramentasIA, definicoes_ferramentas, get_ferramentas_ia
 from backend.main import app
+from backend.controle_uso import get_controle_uso
 from backend.models import Base, NotificacaoEstadual
 from backend.schemas import AssistenteRequest
 from tests.test_analitica import popular_fontes
@@ -244,6 +247,7 @@ class FerramentasAssistenteTests(unittest.TestCase):
             MensagemLLM(role="assistant", content="A estratégia é persistência, com referência até 31/10/2026.")])
         app.dependency_overrides[get_cliente_groq] = lambda: cliente
         app.dependency_overrides[get_ferramentas_ia] = lambda: self.ferramentas
+        app.dependency_overrides[get_controle_uso] = lambda: SimpleNamespace(reservar=nullcontext)
         try:
             with TestClient(app) as http:
                 response = http.post("/assistente", json=dict(pergunta="Como funciona o modelo?"))
